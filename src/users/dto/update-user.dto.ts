@@ -16,11 +16,11 @@ export class UpdateUserDto {
   email?: string;
 
   @IsOptional()
-  @IsIn(['admin'])
-  role?: string;
-
-  @IsOptional()
   @IsString()
   @MinLength(6)
   password?: string;
+
+  @IsOptional()
+  @IsIn(['admin', 'trainer'])
+  role?: 'admin' | 'trainer';
 }

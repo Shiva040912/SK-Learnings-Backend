@@ -1,29 +1,58 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import {
+  Prop,
+  Schema,
+  SchemaFactory,
+} from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
-export type StudentDocument = HydratedDocument<Student>;
+export type StudentDocument =
+  HydratedDocument<Student>;
 
 @Schema({ timestamps: true })
 export class Student {
   @Prop({ required: true, trim: true })
   studentName!: string;
 
+  @Prop({
+    required: true,
+    trim: true,
+    unique: true,
+  })
+  rollNo!: string;
+
   @Prop({ required: true, trim: true })
   parentName!: string;
 
-  @Prop({ required: true, trim: true })
+  @Prop({
+    required: true,
+    trim: true,
+  })
   phone!: string;
 
-  @Prop({ trim: true })
+  @Prop({
+    trim: true,
+  })
   alternatePhone?: string;
 
-  @Prop({ trim: true })
+  @Prop({
+    trim: true,
+    lowercase: true,
+    unique: true,
+    sparse: true,
+  })
   email?: string;
 
-  @Prop({ required: true, trim: true })
+  @Prop({
+    required: true,
+    trim: true,
+  })
   course!: string;
 
-  @Prop({ required: true, trim: true })
+  @Prop({
+    required: true,
+    trim: true,
+    unique: true,
+  })
   idproof!: string;
 
   @Prop({ trim: true })
@@ -35,23 +64,39 @@ export class Student {
   @Prop({ trim: true })
   address?: string;
 
-  @Prop({ required: true, min: 0 })
+  @Prop({
+    required: true,
+    min: 0,
+  })
   totalFee!: number;
 
-  @Prop({ default: 0, min: 0 })
+  @Prop({
+    default: 0,
+    min: 0,
+  })
   paidAmount!: number;
 
-  @Prop({ required: true, min: 0 })
+  @Prop({
+    required: true,
+    min: 0,
+  })
   pendingAmount!: number;
 
   @Prop({
-    enum: ['pending', 'partial', 'paid'],
-    default: 'pending',
+    enum: ['unpaid', 'paid'],
+    default: 'unpaid',
   })
-  paymentStatus!: string;
+  paymentStatus!: 'unpaid' | 'paid';
+
+  @Prop({
+    enum: ['cash', 'bank', 'upi', 'qr'],
+    default: null,
+  })
+  paymentMethod?: 'cash' | 'bank' | 'upi' | 'qr';
 
   @Prop({ default: true })
   isActive!: boolean;
 }
 
-export const StudentSchema = SchemaFactory.createForClass(Student);
+export const StudentSchema =
+  SchemaFactory.createForClass(Student);

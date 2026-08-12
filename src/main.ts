@@ -1,13 +1,41 @@
-import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app =
+    await NestFactory.create(AppModule);
 
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: (
+      origin,
+      callback,
+    ) => {
+      const allowedOrigins = [
+        'http://localhost:5173',
+        'https://sk-learning-frontend.vercel.app',
+      ];
+
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (
+        allowedOrigins.includes(origin) ||
+        origin.endsWith('.vercel.app')
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(
+        new Error(
+          'Not allowed by CORS',
+        ),
+        false,
+      );
+    },
+
     credentials: true,
   });
 
@@ -15,13 +43,12 @@ async function bootstrap() {
     new ValidationPipe({
       whitelist: true,
       transform: true,
-      forbidNonWhitelisted: true,
     }),
   );
 
-  const port = process.env.PORT || 3000;
-
-  await app.listen(port);
+  await app.listen(
+    process.env.PORT || 3000,
+  );
 }
 
 bootstrap();

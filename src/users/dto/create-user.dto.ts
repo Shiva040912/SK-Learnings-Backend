@@ -1,7 +1,7 @@
 import {
   IsEmail,
+  IsIn,
   IsNotEmpty,
-  IsOptional,
   IsString,
   MinLength,
 } from 'class-validator';
@@ -19,7 +19,6 @@ export class CreateUserDto {
   @MinLength(6)
   password!: string;
 
-  @IsOptional()
-  @IsString()
-  role?: string;
+  @IsIn(['admin', 'trainer'])
+  role!: 'admin' | 'trainer';
 }

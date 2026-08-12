@@ -19,21 +19,25 @@ import { UpdateUserDto } from './dto/update-user.dto';
 export class UsersService {
   constructor(
     @InjectModel(User.name)
-    private readonly userModel: Model<UserDocument>,
+    private readonly userModel:
+      Model<UserDocument>,
   ) {}
 
   async findByEmail(email: string) {
     return this.userModel.findOne({
-      email: email.toLowerCase().trim(),
+      email: email
+        .toLowerCase()
+        .trim(),
     });
   }
 
   async createUser(
     createUserDto: CreateUserDto,
   ) {
-    const email = createUserDto.email
-      .toLowerCase()
-      .trim();
+    const email =
+      createUserDto.email
+        .toLowerCase()
+        .trim();
 
     const existingUser =
       await this.userModel.findOne({
@@ -52,18 +56,24 @@ export class UsersService {
         10,
       );
 
-    const user = new this.userModel({
-      name: createUserDto.name.trim(),
-      email,
-      password: hashedPassword,
-      role: createUserDto.role || 'admin',
-      isActive: true,
-    });
+    const user =
+      new this.userModel({
+        name:
+          createUserDto.name.trim(),
+        email,
+        password:
+          hashedPassword,
+        role:
+          createUserDto.role,
+        isActive: true,
+      });
 
-    const savedUser = await user.save();
+    const savedUser =
+      await user.save();
 
     return {
-      message: 'User created successfully',
+      message:
+        'User created successfully',
 
       user: {
         id: savedUser._id,
@@ -75,24 +85,30 @@ export class UsersService {
   }
 
   async getAllUsers() {
-    const users = await this.userModel
-      .find()
-      .select('-password')
-      .lean();
+    const users =
+      await this.userModel
+        .find()
+        .select('-password')
+        .lean();
 
-    return users.map((user) => ({
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-    }));
+    return users.map(
+      (user) => ({
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      }),
+    );
   }
 
-  async getUserById(id: string) {
-    const user = await this.userModel
-      .findById(id)
-      .select('-password')
-      .lean();
+  async getUserById(
+    id: string,
+  ) {
+    const user =
+      await this.userModel
+        .findById(id)
+        .select('-password')
+        .lean();
 
     if (!user) {
       throw new NotFoundException(
@@ -110,10 +126,13 @@ export class UsersService {
 
   async updateUser(
     id: string,
-    updateUserDto: UpdateUserDto,
+    updateUserDto:
+      UpdateUserDto,
   ) {
     const user =
-      await this.userModel.findById(id);
+      await this.userModel.findById(
+        id,
+      );
 
     if (!user) {
       throw new NotFoundException(
@@ -122,9 +141,10 @@ export class UsersService {
     }
 
     if (updateUserDto.email) {
-      const email = updateUserDto.email
-        .toLowerCase()
-        .trim();
+      const email =
+        updateUserDto.email
+          .toLowerCase()
+          .trim();
 
       const existingUser =
         await this.userModel.findOne({
@@ -151,7 +171,9 @@ export class UsersService {
         updateUserDto.role;
     }
 
-    if (updateUserDto.password) {
+    if (
+      updateUserDto.password
+    ) {
       user.password =
         await bcrypt.hash(
           updateUserDto.password,
@@ -163,7 +185,8 @@ export class UsersService {
       await user.save();
 
     return {
-      message: 'User updated successfully',
+      message:
+        'User updated successfully',
 
       user: {
         id: updatedUser._id,
@@ -174,9 +197,13 @@ export class UsersService {
     };
   }
 
-  async deleteUser(id: string) {
+  async deleteUser(
+    id: string,
+  ) {
     const user =
-      await this.userModel.findById(id);
+      await this.userModel.findById(
+        id,
+      );
 
     if (!user) {
       throw new NotFoundException(
@@ -189,7 +216,8 @@ export class UsersService {
     });
 
     return {
-      message: 'User deleted successfully',
+      message:
+        'User deleted successfully',
     };
   }
 }

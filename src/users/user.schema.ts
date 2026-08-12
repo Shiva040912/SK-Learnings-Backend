@@ -1,7 +1,12 @@
-import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import {
+  Prop,
+  Schema,
+  SchemaFactory,
+} from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
-export type UserDocument = HydratedDocument<User>;
+export type UserDocument =
+  HydratedDocument<User>;
 
 @Schema({
   timestamps: true,
@@ -27,9 +32,10 @@ export class User {
   password!: string;
 
   @Prop({
-    default: 'admin',
+    enum: ['admin', 'trainer'],
+    default: 'trainer',
   })
-  role!: string;
+  role!: 'admin' | 'trainer';
 
   @Prop({
     default: true,
@@ -37,4 +43,5 @@ export class User {
   isActive!: boolean;
 }
 
-export const UserSchema = SchemaFactory.createForClass(User);
+export const UserSchema =
+  SchemaFactory.createForClass(User);
