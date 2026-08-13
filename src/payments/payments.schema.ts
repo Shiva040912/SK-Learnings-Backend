@@ -52,6 +52,12 @@ export class Payment {
   paymentDate!: Date;
 
   @Prop({
+    required: true,
+    trim: true,
+  })
+  billingMonth!: string;
+
+  @Prop({
     enum: [
       'cash',
       'bank',

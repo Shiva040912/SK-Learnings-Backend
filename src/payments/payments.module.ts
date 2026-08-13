@@ -11,6 +11,11 @@ import {
   PaymentSettingSchema,
 } from './payments-settings.schema';
 
+import {
+  Student,
+  StudentSchema,
+} from '../student/students.schema';
+
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 
@@ -25,10 +30,23 @@ import { PaymentsService } from './payments.service';
         name: PaymentSetting.name,
         schema: PaymentSettingSchema,
       },
+      {
+        name: Student.name,
+        schema: StudentSchema,
+      },
     ]),
   ],
-  controllers: [PaymentsController],
-  providers: [PaymentsService],
-  exports: [PaymentsService],
+
+  controllers: [
+    PaymentsController,
+  ],
+
+  providers: [
+    PaymentsService,
+  ],
+
+  exports: [
+    PaymentsService,
+  ],
 })
 export class PaymentsModule {}
