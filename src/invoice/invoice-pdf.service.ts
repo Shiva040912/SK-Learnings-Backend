@@ -66,7 +66,10 @@ export class InvoicePdfService {
       | undefined,
   ) {
     const labels:
-      Record<string, string> = {
+      Record<
+        string,
+        string
+      > = {
         monthly:
           'Monthly',
 
@@ -89,7 +92,10 @@ export class InvoicePdfService {
       | undefined,
   ) {
     const labels:
-      Record<string, string> = {
+      Record<
+        string,
+        string
+      > = {
         cash:
           'Cash',
 
@@ -322,7 +328,7 @@ export class InvoicePdfService {
           </div>
         `;
 
-    const receiptMeta =
+    const receiptPaymentMeta =
       isReceipt
         ? `
           <div class="payment-meta">
@@ -370,74 +376,102 @@ export class InvoicePdfService {
     const bottomSection =
       !isReceipt
         ? `
-          <section class="payment-area">
-            <div class="qr-panel">
-              <div>
-                <span class="section-title">
-                  Scan & Pay
+          <section class="bottom-grid">
+            <div class="payment-panel">
+              <div class="section-label">
+                PAYMENT INFORMATION
+              </div>
+
+              <div class="payment-panel-content">
+                <div class="payment-copy">
+                  <strong>
+                    Scan & Pay
+                  </strong>
+
+                  <p>
+                    Use the QR code to complete the fee payment.
+                  </p>
+
+                  <p>
+                    After completing the payment, share the screenshot in WhatsApp for verification.
+                  </p>
+                </div>
+
+                <div class="qr-wrap">
+                  ${qrHtml}
+                </div>
+              </div>
+            </div>
+
+            <div class="summary-panel">
+              <div class="summary-row">
+                <span>
+                  Total Fee
                 </span>
 
+                <strong>
+                  Rs. ${this.formatMoney(
+                    totalFee,
+                  )}
+                </strong>
+              </div>
+
+              <div class="summary-row">
+                <span>
+                  Already Paid
+                </span>
+
+                <strong>
+                  Rs. ${this.formatMoney(
+                    paidAmount,
+                  )}
+                </strong>
+              </div>
+
+              <div class="summary-row total">
+                <span>
+                  Amount Payable
+                </span>
+
+                <strong>
+                  Rs. ${this.formatMoney(
+                    pendingAmount,
+                  )}
+                </strong>
+              </div>
+
+              <div class="terms-block">
+                <div class="section-label">
+                  TERMS & NOTES
+                </div>
+
                 <p>
-                  Scan the QR using any supported UPI app.
+                  1. Please complete the payment on or before the due date.
                 </p>
+
+                <p>
+                  2. Share the payment screenshot through WhatsApp after payment.
+                </p>
+
+                ${
+                  business.invoiceTerms
+                    ? `
+                      <p>
+                        3. ${this.escapeHtml(
+                          business.invoiceTerms,
+                        )}
+                      </p>
+                    `
+                    : ''
+                }
               </div>
-
-              ${qrHtml}
-            </div>
-
-            <div class="instructions">
-              <div class="section-title">
-                Payment Instructions
-              </div>
-
-              <ol>
-                <li>
-                  Scan the QR code and complete the fee payment.
-                </li>
-
-                <li>
-                  Share the payment screenshot in WhatsApp for verification.
-                </li>
-
-                <li>
-                  After verification, the payment receipt will be generated.
-                </li>
-              </ol>
-
-              ${
-                business.invoiceTerms
-                  ? `
-                    <p>
-                      <strong>
-                        Terms:
-                      </strong>
-
-                      ${this.escapeHtml(
-                        business.invoiceTerms,
-                      )}
-                    </p>
-                  `
-                  : ''
-              }
-            </div>
-
-            <div class="total-box">
-              <span>
-                Amount Payable
-              </span>
-
-              <strong>
-                Rs. ${this.formatMoney(
-                  invoice.invoiceAmount,
-                )}
-              </strong>
             </div>
           </section>
         `
         : `
-          <section class="paid-section">
-            <div class="paid-badge">
-              <div class="check-icon">
+          <section class="receipt-bottom">
+            <div class="payment-received-box">
+              <div class="received-icon">
                 ✓
               </div>
 
@@ -464,7 +498,7 @@ export class InvoicePdfService {
                 ? `
                   <div class="balance-box">
                     <span>
-                      Remaining Balance
+                      REMAINING BALANCE
                     </span>
 
                     <strong>
@@ -481,7 +515,7 @@ export class InvoicePdfService {
                 : `
                   <div class="balance-box completed">
                     <span>
-                      Fee Status
+                      FEE STATUS
                     </span>
 
                     <strong>
@@ -522,6 +556,7 @@ export class InvoicePdfService {
       padding: 0;
       background: #ffffff;
       font-family: Arial, Helvetica, sans-serif;
+
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
     }
@@ -530,909 +565,1465 @@ export class InvoicePdfService {
       overflow: hidden;
     }
 
-    .a4-page {
+    .invoice-page {
       width: 210mm;
       height: 297mm;
-      padding: 8mm 10mm;
-      background: #ffffff;
-    }
 
-    .invoice-document {
-      width: 100%;
-      min-height: 0;
-      margin: 0 auto;
-      overflow: hidden;
-      border: 1px solid #e5e8eb;
+      display: flex;
+      flex-direction: column;
+
       background: #ffffff;
-      color: #28323c;
+
+      color: #26313c;
+
+      overflow: hidden;
     }
 
     .invoice-header {
-      min-height: 70px;
+      min-height: 35mm;
+
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 14px;
-      padding: 11px 16px;
-      border-bottom: 3px solid #ffb800;
+
+      padding: 7mm 10mm;
+
       background: #050505;
+
+      border-bottom: 1.5mm solid #ffb800;
     }
 
     .brand {
-      min-width: 0;
       display: flex;
       align-items: center;
-      gap: 10px;
+
+      gap: 4mm;
     }
 
     .brand-logo {
-      width: 46px;
-      height: 46px;
-      flex: 0 0 46px;
+      width: 19mm;
+      height: 19mm;
+
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
     .brand-logo img {
-      width: 46px;
-      height: 46px;
+      width: 100%;
+      height: 100%;
+
       object-fit: contain;
     }
 
     .logo-fallback {
-      width: 44px;
-      height: 44px;
+      width: 18mm;
+      height: 18mm;
+
       display: flex;
       align-items: center;
       justify-content: center;
+
       border: 2px solid #ffb800;
       border-radius: 50%;
-      background: #111111;
+
       color: #ffffff;
-      font-size: 11px;
+
+      font-size: 12px;
       font-weight: 900;
     }
 
     .brand h1 {
       margin: 0;
+
       color: #ffb800;
-      font-size: 18px;
+
+      font-size: 23px;
       line-height: 1;
     }
 
     .brand p {
-      margin: 4px 0 0;
+      margin: 5px 0 0;
+
       color: #ffffff;
-      font-size: 7px;
-      letter-spacing: 1.8px;
+
+      font-size: 8px;
+
+      letter-spacing: 2px;
     }
 
-    .brand strong {
+    .brand small {
       display: block;
-      margin-top: 4px;
+
+      margin-top: 5px;
+
       color: #ffb800;
-      font-size: 5.5px;
-      letter-spacing: 0.4px;
+
+      font-size: 6px;
+
+      letter-spacing: 0.5px;
     }
 
-    .document-status {
-      min-width: 100px;
-      padding: 7px 9px;
-      border-radius: 7px;
+    .document-box {
+      min-width: 43mm;
+
+      padding: 4mm;
+
+      border-radius: 8px;
+
       text-align: right;
     }
 
-    .document-status.unpaid {
+    .document-box.unpaid {
       border: 1px solid rgba(255, 184, 0, 0.45);
-      background: rgba(255, 184, 0, 0.09);
-    }
 
-    .document-status.paid {
-      border: 1px solid rgba(107, 205, 139, 0.45);
-      background: rgba(87, 176, 115, 0.1);
-    }
-
-    .document-status.received {
-      border: 1px solid rgba(255, 184, 0, 0.42);
       background: rgba(255, 184, 0, 0.08);
     }
 
-    .document-status span {
-      display: block;
-      color: #d8dde2;
-      font-size: 5.5px;
-      font-weight: 700;
-      letter-spacing: 0.6px;
+    .document-box.received {
+      border: 1px solid rgba(255, 184, 0, 0.45);
+
+      background: rgba(255, 184, 0, 0.08);
     }
 
-    .document-status strong {
-      display: block;
-      margin-top: 3px;
-      font-size: 11px;
+    .document-box.paid {
+      border: 1px solid rgba(105, 210, 140, 0.45);
+
+      background: rgba(70, 160, 100, 0.12);
     }
 
-    .document-status.unpaid strong {
+    .document-box span {
+      display: block;
+
+      color: #d6dbe0;
+
+      font-size: 7px;
+
+      font-weight: 800;
+
+      letter-spacing: 1px;
+    }
+
+    .document-box strong {
+      display: block;
+
+      margin-top: 5px;
+
+      font-size: 16px;
+    }
+
+    .document-box.unpaid strong,
+    .document-box.received strong {
       color: #ffb800;
     }
 
-    .document-status.paid strong {
-      color: #7cdaa0;
-    }
-
-    .document-status.received strong {
-      color: #ffca42;
+    .document-box.paid strong {
+      color: #79d99b;
     }
 
     .meta-bar {
+      min-height: 18mm;
+
       display: grid;
+
       grid-template-columns:
         repeat(
           4,
-          minmax(0, 1fr)
+          minmax(
+            0,
+            1fr
+          )
         );
-      border-bottom: 1px solid #e7ebee;
-      background: #fafbfc;
+
+      border-bottom:
+        1px solid
+        #e1e6ea;
+
+      background:
+        #fafbfc;
     }
 
-    .meta-bar > div {
-      min-width: 0;
-      padding: 7px 10px;
-      border-right: 1px solid #e7ebee;
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+
+      padding:
+        3mm
+        5mm;
+
+      border-right:
+        1px solid
+        #e1e6ea;
     }
 
-    .meta-bar > div:last-child {
+    .meta-item:last-child {
       border-right: 0;
     }
 
-    .meta-bar span,
-    .meta-bar strong {
-      display: block;
+    .meta-item span {
+      color:
+        #8b949e;
+
+      font-size:
+        6px;
+
+      font-weight:
+        800;
+
+      text-transform:
+        uppercase;
     }
 
-    .meta-bar span {
-      color: #8a949e;
-      font-size: 5px;
-      font-weight: 750;
-      text-transform: uppercase;
+    .meta-item strong {
+      margin-top:
+        4px;
+
+      color:
+        #35414c;
+
+      font-size:
+        9px;
     }
 
-    .meta-bar strong {
-      margin-top: 2px;
-      color: #35414c;
-      font-size: 6.8px;
+    .meta-item strong.paid {
+      color:
+        #31844e;
     }
 
-    .status-paid {
-      color: #31844e !important;
+    .meta-item strong.unpaid,
+    .meta-item strong.received {
+      color:
+        #9d6c00;
     }
 
-    .status-unpaid {
-      color: #aa7400 !important;
-    }
+    .party-section {
+      display:
+        grid;
 
-    .status-received {
-      color: #a57500 !important;
-    }
-
-    .party-grid {
-      display: grid;
       grid-template-columns:
-        1.15fr
-        0.85fr;
-      gap: 8px;
-      padding: 10px 16px 8px;
+        1.08fr
+        0.92fr;
+
+      gap:
+        4mm;
+
+      padding:
+        6mm
+        10mm
+        4mm;
     }
 
-    .party-block {
-      min-width: 0;
-      padding: 8px 9px;
-      border: 1px solid #e1e6ea;
-      border-radius: 7px;
-      background: #ffffff;
+    .party-card {
+      min-height:
+        43mm;
+
+      padding:
+        4mm;
+
+      border:
+        1px solid
+        #dfe4e8;
+
+      border-radius:
+        8px;
+
+      background:
+        #ffffff;
     }
 
     .section-title {
-      display: block;
-      margin-bottom: 6px;
-      color: #2e3944;
-      font-size: 7.5px;
-      font-weight: 800;
+      margin-bottom:
+        4mm;
+
+      color:
+        #303b46;
+
+      font-size:
+        10px;
+
+      font-weight:
+        800;
     }
 
     .detail-grid {
-      display: grid;
+      display:
+        grid;
+
       grid-template-columns:
         repeat(
           2,
-          minmax(0, 1fr)
+          minmax(
+            0,
+            1fr
+          )
         );
-      gap: 6px 10px;
+
+      gap:
+        3mm
+        5mm;
     }
 
     .detail.wide {
-      grid-column: 1 / -1;
+      grid-column:
+        1 / -1;
     }
 
     .detail span,
     .detail strong {
-      display: block;
+      display:
+        block;
     }
 
     .detail span {
-      color: #919aa3;
-      font-size: 4.8px;
-      font-weight: 720;
-      text-transform: uppercase;
+      color:
+        #8d969f;
+
+      font-size:
+        6px;
+
+      font-weight:
+        800;
+
+      text-transform:
+        uppercase;
     }
 
     .detail strong {
-      margin-top: 2px;
-      overflow-wrap: anywhere;
-      color: #3d4853;
-      font-size: 6.4px;
-      line-height: 1.3;
+      margin-top:
+        2px;
+
+      color:
+        #3c4752;
+
+      font-size:
+        8px;
+
+      line-height:
+        1.4;
+
+      overflow-wrap:
+        anywhere;
     }
 
     .fee-section {
-      padding: 1px 16px 8px;
+      padding:
+        1mm
+        10mm
+        4mm;
     }
 
     .fee-table {
-      overflow: hidden;
-      border: 1px solid #dfe4e8;
-      border-radius: 6px;
+      overflow:
+        hidden;
+
+      border:
+        1px solid
+        #dfe4e8;
+
+      border-radius:
+        7px;
     }
 
-    .fee-head,
-    .fee-row {
-      display: grid;
+    .fee-table-head,
+    .fee-table-row {
+      display:
+        grid;
+
       grid-template-columns:
         2fr
-        0.8fr
-        0.85fr
-        0.85fr
+        0.9fr
+        0.9fr
+        0.9fr
         0.9fr;
-      align-items: center;
+
+      align-items:
+        center;
     }
 
-    .fee-head {
-      min-height: 24px;
-      background: #ffb800;
+    .fee-table-head {
+      min-height:
+        11mm;
+
+      background:
+        #ffb800;
     }
 
-    .fee-head span {
-      padding: 0 7px;
-      color: #1e1e1e;
-      font-size: 5px;
-      font-weight: 800;
-      text-transform: uppercase;
+    .fee-table-head div {
+      padding:
+        0
+        3mm;
+
+      color:
+        #181818;
+
+      font-size:
+        6px;
+
+      font-weight:
+        900;
+
+      text-transform:
+        uppercase;
     }
 
-    .fee-row {
-      min-height: 38px;
+    .fee-table-row {
+      min-height:
+        18mm;
+
+      background:
+        #ffffff;
     }
 
-    .fee-row > * {
-      min-width: 0;
-      padding: 6px 7px;
-      border-right: 1px solid #e7eaed;
-      font-size: 6.2px;
+    .fee-table-row > div {
+      min-height:
+        18mm;
+
+      display:
+        flex;
+
+      flex-direction:
+        column;
+
+      justify-content:
+        center;
+
+      padding:
+        3mm;
+
+      border-right:
+        1px solid
+        #e5e9ec;
+
+      color:
+        #36414c;
+
+      font-size:
+        8px;
+
+      font-weight:
+        700;
     }
 
-    .fee-row > *:last-child {
-      border-right: 0;
+    .fee-table-row > div:last-child {
+      border-right:
+        0;
     }
 
-    .fee-description strong,
     .fee-description span {
-      display: block;
-    }
+      margin-top:
+        3px;
 
-    .fee-description span {
-      margin-top: 2px;
-      color: #929ba4;
-      font-size: 5px;
+      color:
+        #8e979f;
+
+      font-size:
+        6px;
+
+      font-weight:
+        400;
     }
 
     .payment-meta {
-      display: grid;
+      display:
+        grid;
+
       grid-template-columns:
         repeat(
           3,
-          minmax(0, 1fr)
+          minmax(
+            0,
+            1fr
+          )
         );
-      gap: 6px;
-      margin-top: 6px;
+
+      gap:
+        3mm;
+
+      margin-top:
+        3mm;
     }
 
     .payment-meta > div {
-      padding: 6px 8px;
-      border: 1px solid #e0e5e9;
-      border-radius: 6px;
-      background: #fafbfc;
-    }
+      min-height:
+        16mm;
 
-    .payment-meta span,
-    .payment-meta strong {
-      display: block;
+      display:
+        flex;
+
+      flex-direction:
+        column;
+
+      justify-content:
+        center;
+
+      padding:
+        3mm;
+
+      border:
+        1px solid
+        #dfe4e8;
+
+      border-radius:
+        7px;
+
+      background:
+        #fafbfc;
     }
 
     .payment-meta span {
-      color: #929aa3;
-      font-size: 4.8px;
-      font-weight: 720;
-      text-transform: uppercase;
+      color:
+        #8e979f;
+
+      font-size:
+        6px;
+
+      font-weight:
+        800;
+
+      text-transform:
+        uppercase;
     }
 
     .payment-meta strong {
-      margin-top: 2px;
-      color: #35414c;
-      font-size: 6.7px;
+      margin-top:
+        3px;
+
+      color:
+        #35414c;
+
+      font-size:
+        9px;
     }
 
-    .payment-area {
-      position: relative;
-      display: grid;
+    .bottom-grid {
+      flex:
+        1;
+
+      display:
+        grid;
+
       grid-template-columns:
-        0.72fr
-        1.28fr;
-      gap: 8px;
-      padding: 1px 16px 40px;
+        0.9fr
+        1.1fr;
+
+      gap:
+        5mm;
+
+      padding:
+        2mm
+        10mm
+        7mm;
     }
 
-    .qr-panel,
-    .instructions {
-      min-height: 118px;
-      padding: 8px;
-      border: 1px solid #e1e6ea;
-      border-radius: 7px;
+    .payment-panel,
+    .summary-panel {
+      min-height:
+        65mm;
+
+      border:
+        1px solid
+        #dfe4e8;
+
+      border-radius:
+        9px;
+
+      background:
+        #ffffff;
     }
 
-    .qr-panel {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
+    .section-label {
+      display:
+        inline-flex;
+
+      align-items:
+        center;
+
+      min-height:
+        9mm;
+
+      padding:
+        0
+        4mm;
+
+      border-radius:
+        0
+        0
+        7px
+        0;
+
+      background:
+        #050505;
+
+      color:
+        #ffb800;
+
+      font-size:
+        7px;
+
+      font-weight:
+        900;
+
+      letter-spacing:
+        0.4px;
     }
 
-    .qr-panel p {
-      max-width: 90px;
-      margin: -2px 0 0;
-      color: #89939d;
-      font-size: 5px;
-      line-height: 1.4;
+    .payment-panel-content {
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      justify-content:
+        space-between;
+
+      gap:
+        4mm;
+
+      padding:
+        5mm;
     }
 
-    .qr-panel img,
+    .payment-copy {
+      flex:
+        1;
+    }
+
+    .payment-copy strong {
+      color:
+        #35414c;
+
+      font-size:
+        11px;
+    }
+
+    .payment-copy p {
+      margin:
+        3mm
+        0
+        0;
+
+      color:
+        #68737d;
+
+      font-size:
+        7px;
+
+      line-height:
+        1.5;
+    }
+
+    .qr-wrap {
+      width:
+        39mm;
+
+      height:
+        39mm;
+
+      flex:
+        0
+        0
+        39mm;
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      justify-content:
+        center;
+    }
+
+    .qr-wrap img {
+      width:
+        37mm;
+
+      height:
+        37mm;
+
+      object-fit:
+        contain;
+
+      padding:
+        2mm;
+
+      border:
+        1px solid
+        #dfe4e8;
+
+      border-radius:
+        6px;
+
+      background:
+        #ffffff;
+    }
+
     .qr-missing {
-      width: 82px;
-      height: 82px;
-      flex: 0 0 82px;
-      border-radius: 5px;
+      width:
+        37mm;
+
+      height:
+        37mm;
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      justify-content:
+        center;
+
+      border:
+        1px dashed
+        #ccd3d9;
+
+      border-radius:
+        6px;
+
+      color:
+        #8c969f;
+
+      font-size:
+        7px;
     }
 
-    .qr-panel img {
-      object-fit: contain;
-      padding: 3px;
-      border: 1px solid #e1e5e8;
-      background: #ffffff;
+    .summary-panel {
+      padding:
+        4mm;
     }
 
-    .qr-missing {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 1px dashed #d9dee2;
-      color: #9aa2aa;
-      font-size: 5.3px;
+    .summary-row {
+      min-height:
+        13mm;
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      justify-content:
+        space-between;
+
+      padding:
+        0
+        4mm;
+
+      border:
+        1px solid
+        #e1e6ea;
+
+      border-bottom:
+        0;
+
+      background:
+        #ffffff;
     }
 
-    .instructions ol {
-      margin: 0;
-      padding-left: 14px;
+    .summary-row:first-child {
+      border-radius:
+        7px
+        7px
+        0
+        0;
     }
 
-    .instructions li {
-      margin-bottom: 5px;
-      color: #53606b;
-      font-size: 5.8px;
-      line-height: 1.35;
+    .summary-row span {
+      color:
+        #59646e;
+
+      font-size:
+        8px;
+
+      font-weight:
+        700;
     }
 
-    .instructions p {
-      margin: 6px 0 0;
-      color: #66717c;
-      font-size: 5.2px;
-      line-height: 1.35;
+    .summary-row strong {
+      color:
+        #2f3943;
+
+      font-size:
+        9px;
     }
 
-    .total-box {
-      position: absolute;
-      right: 16px;
-      bottom: 7px;
-      width: calc(64% - 22px);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 7px 9px;
-      border: 1px solid #e8c85c;
-      border-radius: 6px;
-      background: #fff9e8;
+    .summary-row.total {
+      min-height:
+        16mm;
+
+      border-bottom:
+        1px solid
+        #d9b442;
+
+      border-color:
+        #d9b442;
+
+      border-radius:
+        0
+        0
+        7px
+        7px;
+
+      background:
+        #ffb800;
     }
 
-    .total-box span {
-      color: #9b6a00;
-      font-size: 5.8px;
-      font-weight: 800;
-      text-transform: uppercase;
+    .summary-row.total span {
+      color:
+        #171717;
+
+      font-size:
+        9px;
+
+      font-weight:
+        900;
     }
 
-    .total-box strong {
-      color: #9d6500;
-      font-size: 12px;
+    .summary-row.total strong {
+      color:
+        #171717;
+
+      font-size:
+        15px;
     }
 
-    .paid-section {
-      display: grid;
+    .terms-block {
+      margin-top:
+        5mm;
+    }
+
+    .terms-block .section-label {
+      border-radius:
+        6px;
+
+      background:
+        #050505;
+    }
+
+    .terms-block p {
+      margin:
+        3mm
+        0
+        0;
+
+      color:
+        #59646e;
+
+      font-size:
+        7px;
+
+      line-height:
+        1.45;
+    }
+
+    .receipt-bottom {
+      flex:
+        1;
+
+      display:
+        grid;
+
       grid-template-columns:
         1.25fr
         0.75fr;
-      gap: 8px;
-      padding: 1px 16px 10px;
+
+      gap:
+        5mm;
+
+      padding:
+        3mm
+        10mm
+        8mm;
     }
 
-    .paid-badge,
+    .payment-received-box,
     .balance-box {
-      min-height: 78px;
-      display: flex;
-      align-items: center;
-      padding: 10px;
-      border-radius: 7px;
+      min-height:
+        58mm;
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      padding:
+        6mm;
+
+      border-radius:
+        9px;
     }
 
-    .paid-badge {
-      gap: 10px;
-      border: 1px solid #c6e1cf;
-      background: #f3faf5;
+    .payment-received-box {
+      gap:
+        5mm;
+
+      border:
+        1px solid
+        #bfe0c9;
+
+      background:
+        #f1faf4;
     }
 
-    .check-icon {
-      width: 34px;
-      height: 34px;
-      flex: 0 0 34px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 2px solid #3e965b;
-      border-radius: 50%;
-      color: #3e965b;
-      font-size: 20px;
-      font-weight: 900;
+    .received-icon {
+      width:
+        18mm;
+
+      height:
+        18mm;
+
+      flex:
+        0
+        0
+        18mm;
+
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      justify-content:
+        center;
+
+      border:
+        1.5mm solid
+        #3e965b;
+
+      border-radius:
+        50%;
+
+      color:
+        #3e965b;
+
+      font-size:
+        25px;
+
+      font-weight:
+        900;
     }
 
-    .paid-badge span,
-    .paid-badge strong,
-    .paid-badge p,
-    .balance-box span,
-    .balance-box strong,
-    .balance-box p {
-      display: block;
-    }
-
-    .paid-badge span,
+    .payment-received-box span,
     .balance-box span {
-      color: #6c7b70;
-      font-size: 5px;
-      font-weight: 800;
+      display:
+        block;
+
+      color:
+        #68776d;
+
+      font-size:
+        7px;
+
+      font-weight:
+        900;
     }
 
-    .paid-badge strong {
-      margin-top: 3px;
-      color: #2f824b;
-      font-size: 15px;
+    .payment-received-box strong {
+      display:
+        block;
+
+      margin-top:
+        4px;
+
+      color:
+        #2f824b;
+
+      font-size:
+        22px;
     }
 
-    .paid-badge p,
+    .payment-received-box p,
     .balance-box p {
-      margin: 3px 0 0;
-      color: #768179;
-      font-size: 5.3px;
+      margin:
+        4px
+        0
+        0;
+
+      color:
+        #6f7c73;
+
+      font-size:
+        7px;
     }
 
     .balance-box {
-      flex-direction: column;
-      align-items: flex-start;
-      justify-content: center;
-      border: 1px solid #e1e6ea;
-      background: #fafbfc;
+      flex-direction:
+        column;
+
+      align-items:
+        flex-start;
+
+      justify-content:
+        center;
+
+      border:
+        1px solid
+        #dfe4e8;
+
+      background:
+        #fafbfc;
     }
 
     .balance-box strong {
-      margin-top: 4px;
-      color: #35414c;
-      font-size: 12px;
+      display:
+        block;
+
+      margin-top:
+        5px;
+
+      color:
+        #35414c;
+
+      font-size:
+        18px;
     }
 
     .balance-box.completed {
-      border-color: #c6e1cf;
-      background: #f3faf5;
+      border-color:
+        #bfe0c9;
+
+      background:
+        #f1faf4;
     }
 
     .balance-box.completed strong {
-      color: #31844e;
+      color:
+        #31844e;
     }
 
     .invoice-footer {
-      min-height: 34px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 14px;
-      padding: 7px 16px;
-      border-top: 2px solid #ffb800;
-      background: #050505;
-      color: #ffffff;
-    }
+      min-height:
+        18mm;
 
-    .invoice-footer strong,
-    .invoice-footer span {
-      display: block;
+      display:
+        flex;
+
+      align-items:
+        center;
+
+      justify-content:
+        space-between;
+
+      gap:
+        6mm;
+
+      padding:
+        4mm
+        10mm;
+
+      border-top:
+        1mm solid
+        #ffb800;
+
+      background:
+        #050505;
+
+      color:
+        #ffffff;
     }
 
     .invoice-footer strong {
-      color: #ffb800;
-      font-size: 5.5px;
+      display:
+        block;
+
+      color:
+        #ffb800;
+
+      font-size:
+        7px;
     }
 
     .invoice-footer span {
-      margin-top: 2px;
-      color: #b8bec4;
-      font-size: 4.8px;
+      display:
+        block;
+
+      margin-top:
+        3px;
+
+      color:
+        #b5bcc2;
+
+      font-size:
+        6px;
     }
 
     .footer-brand {
-      color: #ffb800;
-      font-size: 5.8px;
-      font-weight: 800;
-      white-space: nowrap;
+      color:
+        #ffb800;
+
+      font-size:
+        8px;
+
+      font-weight:
+        900;
+
+      white-space:
+        nowrap;
     }
   </style>
 </head>
 
 <body>
-  <main class="a4-page">
-    <div class="invoice-document">
+  <main class="invoice-page">
 
-      <header class="invoice-header">
-        <div class="brand">
-          <div class="brand-logo">
-            ${logoHtml}
-          </div>
+    <header class="invoice-header">
+      <div class="brand">
 
-          <div>
-            <h1>
-              THE SK LEARNINGS
-            </h1>
-
-            <p>
-              PRIVATE EDUCATIONAL SERVICES
-            </p>
-
-            <strong>
-              MEDICAL / ENGINEERING / FOUNDATIONS / JUNIOR IAS
-            </strong>
-          </div>
-        </div>
-
-        <div
-          class="document-status ${statusClass}"
-        >
-          <span>
-            ${documentTitle}
-          </span>
-
-          <strong>
-            ${documentStatus}
-          </strong>
-        </div>
-      </header>
-
-      <section class="meta-bar">
-        <div>
-          <span>
-            Invoice No
-          </span>
-
-          <strong>
-            ${this.escapeHtml(
-              invoice.invoiceNumber,
-            )}
-          </strong>
+        <div class="brand-logo">
+          ${logoHtml}
         </div>
 
         <div>
-          <span>
-            Invoice Date
-          </span>
+          <h1>
+            THE SK LEARNINGS
+          </h1>
 
-          <strong>
-            ${this.formatDate(
-              invoice.invoiceDate,
-            )}
-          </strong>
+          <p>
+            PRIVATE EDUCATIONAL SERVICES
+          </p>
+
+          <small>
+            MEDICAL / ENGINEERING / FOUNDATIONS / JUNIOR IAS
+          </small>
         </div>
 
-        <div>
-          <span>
-            ${
-              isReceipt
-                ? 'Payment Date'
-                : 'Due Date'
-            }
-          </span>
+      </div>
 
-          <strong>
-            ${this.formatDate(
-              isReceipt
-                ? invoice.paymentDate
-                : invoice.dueDate,
-            )}
-          </strong>
-        </div>
+      <div
+        class="document-box ${statusClass}"
+      >
+        <span>
+          ${documentTitle}
+        </span>
 
-        <div>
-          <span>
-            Status
-          </span>
+        <strong>
+          ${documentStatus}
+        </strong>
+      </div>
+    </header>
 
-          <strong
-            class="status-${statusClass}"
-          >
-            ${statusText}
-          </strong>
-        </div>
-      </section>
+    <section class="meta-bar">
 
-      <section class="party-grid">
-        <div class="party-block">
-          <div class="section-title">
-            Student Details
-          </div>
+      <div class="meta-item">
+        <span>
+          Invoice No
+        </span>
 
-          <div class="detail-grid">
-            <div class="detail">
-              <span>
-                Student
-              </span>
+        <strong>
+          ${this.escapeHtml(
+            invoice.invoiceNumber,
+          )}
+        </strong>
+      </div>
 
-              <strong>
-                ${this.escapeHtml(
-                  student.studentName,
-                )}
-              </strong>
-            </div>
+      <div class="meta-item">
+        <span>
+          Invoice Date
+        </span>
 
-            <div class="detail">
-              <span>
-                Roll No
-              </span>
+        <strong>
+          ${this.formatDate(
+            invoice.invoiceDate,
+          )}
+        </strong>
+      </div>
 
-              <strong>
-                ${this.escapeHtml(
-                  student.rollNo,
-                )}
-              </strong>
-            </div>
-
-            <div class="detail">
-              <span>
-                Course
-              </span>
-
-              <strong>
-                ${this.escapeHtml(
-                  student.course,
-                )}
-              </strong>
-            </div>
-
-            <div class="detail">
-              <span>
-                Batch
-              </span>
-
-              <strong>
-                ${this.escapeHtml(
-                  student.batch ||
-                    '-',
-                )}
-              </strong>
-            </div>
-
-            <div class="detail">
-              <span>
-                Parent
-              </span>
-
-              <strong>
-                ${this.escapeHtml(
-                  student.parentName,
-                )}
-              </strong>
-            </div>
-
-            <div class="detail">
-              <span>
-                Phone
-              </span>
-
-              <strong>
-                ${this.escapeHtml(
-                  student.phone,
-                )}
-              </strong>
-            </div>
-          </div>
-        </div>
-
-        <div class="party-block">
-          <div class="section-title">
-            Invoice From
-          </div>
-
-          <div class="detail-grid">
-            <div class="detail">
-              <span>
-                Owner
-              </span>
-
-              <strong>
-                ${this.escapeHtml(
-                  business.ownerName ||
-                    '-',
-                )}
-              </strong>
-            </div>
-
-            <div class="detail">
-              <span>
-                GST No
-              </span>
-
-              <strong>
-                ${this.escapeHtml(
-                  business.gstNumber ||
-                    '-',
-                )}
-              </strong>
-            </div>
-
-            <div class="detail wide">
-              <span>
-                Address
-              </span>
-
-              <strong>
-                ${this.escapeHtml(
-                  business.address ||
-                    '-',
-                )}
-              </strong>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section class="fee-section">
-        <div class="section-title">
+      <div class="meta-item">
+        <span>
           ${
             isReceipt
-              ? 'Payment Summary'
-              : 'Fee Details'
+              ? 'Payment Date'
+              : 'Due Date'
           }
+        </span>
+
+        <strong>
+          ${this.formatDate(
+            isReceipt
+              ? invoice.paymentDate
+              : invoice.dueDate,
+          )}
+        </strong>
+      </div>
+
+      <div class="meta-item">
+        <span>
+          Status
+        </span>
+
+        <strong
+          class="${statusClass}"
+        >
+          ${statusText}
+        </strong>
+      </div>
+
+    </section>
+
+    <section class="party-section">
+
+      <div class="party-card">
+
+        <div class="section-title">
+          Student Details
         </div>
 
-        <div class="fee-table">
-          <div class="fee-head">
+        <div class="detail-grid">
+
+          <div class="detail">
             <span>
-              Description
+              Student
             </span>
-
-            <span>
-              Fee Type
-            </span>
-
-            <span>
-              Total
-            </span>
-
-            <span>
-              Paid
-            </span>
-
-            <span>
-              Pending
-            </span>
-          </div>
-
-          <div class="fee-row">
-            <div class="fee-description">
-              <strong>
-                ${this.escapeHtml(
-                  student.course ||
-                    'Course Fee',
-                )}
-              </strong>
-
-              <span>
-                ${this.escapeHtml(
-                  feePlanText,
-                )}
-              </span>
-            </div>
 
             <strong>
               ${this.escapeHtml(
-                this.formatFeeType(
-                  fee.feeType,
-                ),
-              )}
-            </strong>
-
-            <strong>
-              Rs. ${this.formatMoney(
-                totalFee,
-              )}
-            </strong>
-
-            <strong>
-              Rs. ${this.formatMoney(
-                isReceipt
-                  ? paidAmount
-                  : 0,
-              )}
-            </strong>
-
-            <strong>
-              Rs. ${this.formatMoney(
-                isReceipt
-                  ? pendingAmount
-                  : totalFee,
+                student.studentName,
               )}
             </strong>
           </div>
+
+          <div class="detail">
+            <span>
+              Roll No
+            </span>
+
+            <strong>
+              ${this.escapeHtml(
+                student.rollNo,
+              )}
+            </strong>
+          </div>
+
+          <div class="detail">
+            <span>
+              Course
+            </span>
+
+            <strong>
+              ${this.escapeHtml(
+                student.course,
+              )}
+            </strong>
+          </div>
+
+          <div class="detail">
+            <span>
+              Batch
+            </span>
+
+            <strong>
+              ${this.escapeHtml(
+                student.batch ||
+                  '-',
+              )}
+            </strong>
+          </div>
+
+          <div class="detail">
+            <span>
+              Parent
+            </span>
+
+            <strong>
+              ${this.escapeHtml(
+                student.parentName,
+              )}
+            </strong>
+          </div>
+
+          <div class="detail">
+            <span>
+              Phone
+            </span>
+
+            <strong>
+              ${this.escapeHtml(
+                student.phone,
+              )}
+            </strong>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="party-card">
+
+        <div class="section-title">
+          Invoice From
         </div>
 
-        ${receiptMeta}
-      </section>
+        <div class="detail-grid">
 
-      ${bottomSection}
+          <div class="detail">
+            <span>
+              Owner
+            </span>
 
-      <footer class="invoice-footer">
-        <div>
-          <strong>
+            <strong>
+              ${this.escapeHtml(
+                business.ownerName ||
+                  '-',
+              )}
+            </strong>
+          </div>
+
+          <div class="detail">
+            <span>
+              GST No
+            </span>
+
+            <strong>
+              ${this.escapeHtml(
+                business.gstNumber ||
+                  '-',
+              )}
+            </strong>
+          </div>
+
+          <div class="detail wide">
+            <span>
+              Address
+            </span>
+
+            <strong>
+              ${this.escapeHtml(
+                business.address ||
+                  '-',
+              )}
+            </strong>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
+
+    <section class="fee-section">
+
+      <div class="section-title">
+        ${
+          isReceipt
+            ? 'Payment Summary'
+            : 'Fee Details'
+        }
+      </div>
+
+      <div class="fee-table">
+
+        <div class="fee-table-head">
+          <div>
+            Description
+          </div>
+
+          <div>
+            Fee Type
+          </div>
+
+          <div>
+            Total
+          </div>
+
+          <div>
+            Paid
+          </div>
+
+          <div>
+            Pending
+          </div>
+        </div>
+
+        <div class="fee-table-row">
+
+          <div class="fee-description">
+
+            <strong>
+              ${this.escapeHtml(
+                student.course ||
+                  'Course Fee',
+              )}
+            </strong>
+
+            <span>
+              ${this.escapeHtml(
+                feePlanText,
+              )}
+            </span>
+
+          </div>
+
+          <div>
             ${this.escapeHtml(
-              business.invoiceFooter ||
-                'Thank you for choosing The SK Learnings',
+              this.formatFeeType(
+                fee.feeType,
+              ),
             )}
-          </strong>
+          </div>
 
-          <span>
-            ${this.escapeHtml(
-              business.address ||
-                '',
+          <div>
+            Rs. ${this.formatMoney(
+              totalFee,
             )}
-          </span>
+          </div>
+
+          <div>
+            Rs. ${this.formatMoney(
+              isReceipt
+                ? paidAmount
+                : 0,
+            )}
+          </div>
+
+          <div>
+            Rs. ${this.formatMoney(
+              isReceipt
+                ? pendingAmount
+                : totalFee,
+            )}
+          </div>
+
         </div>
 
-        <div class="footer-brand">
-          THE SK LEARNINGS
-        </div>
-      </footer>
-    </div>
+      </div>
+
+      ${receiptPaymentMeta}
+
+    </section>
+
+    ${bottomSection}
+
+    <footer class="invoice-footer">
+
+      <div>
+
+        <strong>
+          ${this.escapeHtml(
+            business.invoiceFooter ||
+              'Heart full Thanks from SK LEARNINGS',
+          )}
+        </strong>
+
+        <span>
+          ${this.escapeHtml(
+            business.address ||
+              '',
+          )}
+        </span>
+
+      </div>
+
+      <div class="footer-brand">
+        THE SK LEARNINGS
+      </div>
+
+    </footer>
+
   </main>
 </body>
+
 </html>
     `;
   }
@@ -1508,7 +2099,7 @@ export class InvoicePdfService {
             true,
 
           scale:
-            0.88,
+            1,
 
           margin: {
             top:
