@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 
@@ -11,30 +12,48 @@ import { LoginDto } from './dto/login.dto';
 @Injectable()
 export class AuthService {
   constructor(
-    private readonly usersService: UsersService,
-    private readonly jwtService: JwtService,
+    private readonly usersService:
+      UsersService,
+
+    private readonly jwtService:
+      JwtService,
   ) {}
 
-  async login(loginDto: LoginDto) {
-    const { email, password } = loginDto;
+  async login(
+    loginDto: LoginDto,
+  ) {
+    const {
+      email,
+      password,
+    } = loginDto;
 
-    const user = await this.usersService.findByEmail(email);
+    const user =
+      await this.usersService.findByEmail(
+        email,
+      );
 
     if (!user) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException(
+        'Invalid email or password',
+      );
     }
 
     if (!user.isActive) {
-      throw new UnauthorizedException('Your account is inactive');
+      throw new UnauthorizedException(
+        'Your account is inactive',
+      );
     }
 
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      user.password,
-    );
+    const isPasswordValid =
+      await bcrypt.compare(
+        password,
+        user.password,
+      );
 
     if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid email or password');
+      throw new UnauthorizedException(
+        'Invalid email or password',
+      );
     }
 
     const payload = {
@@ -43,15 +62,25 @@ export class AuthService {
       role: user.role,
     };
 
-    const accessToken = await this.jwtService.signAsync(payload);
+    const accessToken =
+      await this.jwtService.signAsync(
+        payload,
+      );
 
     return {
-      message: 'Login successful',
+      message:
+        'Login successful',
+
       accessToken,
+
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
+        phone:
+          user.phone || '',
+        profileImage:
+          user.profileImage || '',
         role: user.role,
       },
     };

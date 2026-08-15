@@ -15,6 +15,9 @@ import { UsersService } from './users.service';
 
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
+
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 @Controller('users')
@@ -35,9 +38,47 @@ export class UsersController {
     }
   }
 
+  @Get('me/profile')
+  getMyProfile(
+    @Req() req: any,
+  ) {
+    return this.usersService.getMyProfile(
+      req.user.userId,
+    );
+  }
+
+  @Patch('me/profile')
+  updateMyProfile(
+    @Req() req: any,
+
+    @Body()
+    updateProfileDto:
+      UpdateProfileDto,
+  ) {
+    return this.usersService.updateMyProfile(
+      req.user.userId,
+      updateProfileDto,
+    );
+  }
+
+  @Patch('me/password')
+  changeMyPassword(
+    @Req() req: any,
+
+    @Body()
+    changePasswordDto:
+      ChangePasswordDto,
+  ) {
+    return this.usersService.changeMyPassword(
+      req.user.userId,
+      changePasswordDto,
+    );
+  }
+
   @Post('create-admin')
   createAdmin(
     @Req() req: any,
+
     @Body()
     createUserDto:
       CreateUserDto,
@@ -65,7 +106,9 @@ export class UsersController {
   @Get(':id')
   getUserById(
     @Req() req: any,
-    @Param('id') id: string,
+
+    @Param('id')
+    id: string,
   ) {
     this.ensureAdministrator(
       req.user?.role,
@@ -79,7 +122,10 @@ export class UsersController {
   @Patch(':id')
   updateUser(
     @Req() req: any,
-    @Param('id') id: string,
+
+    @Param('id')
+    id: string,
+
     @Body()
     updateUserDto:
       UpdateUserDto,
@@ -97,7 +143,9 @@ export class UsersController {
   @Delete(':id')
   deleteUser(
     @Req() req: any,
-    @Param('id') id: string,
+
+    @Param('id')
+    id: string,
   ) {
     this.ensureAdministrator(
       req.user?.role,

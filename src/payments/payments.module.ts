@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+
 import { MongooseModule } from '@nestjs/mongoose';
 
 import {
@@ -17,7 +18,16 @@ import {
 } from '../student/students.schema';
 
 import { PaymentsController } from './payments.controller';
+
 import { PaymentsService } from './payments.service';
+
+import { FeeReminderScheduler } from './fee-reminder.shedule';
+
+import { SettingsModule } from '../settings/settings.module';
+
+import { InvoiceModule } from '../invoice/invoice.module';
+
+import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -26,15 +36,23 @@ import { PaymentsService } from './payments.service';
         name: Payment.name,
         schema: PaymentSchema,
       },
+
       {
         name: PaymentSetting.name,
         schema: PaymentSettingSchema,
       },
+
       {
         name: Student.name,
         schema: StudentSchema,
       },
     ]),
+
+    SettingsModule,
+
+    InvoiceModule,
+
+    WhatsappModule,
   ],
 
   controllers: [
@@ -43,6 +61,7 @@ import { PaymentsService } from './payments.service';
 
   providers: [
     PaymentsService,
+    FeeReminderScheduler,
   ],
 
   exports: [

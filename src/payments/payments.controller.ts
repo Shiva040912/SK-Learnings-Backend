@@ -3,12 +3,16 @@ import {
   Controller,
   Get,
   Param,
+  Post,
   Put,
   UseGuards,
 } from '@nestjs/common';
 
 import { PaymentsService } from './payments.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+
+import { SetupStudentFeeDto } from './dto/setup-student-fee.dto';
+import { CollectStudentPaymentDto } from './dto/collect-student-payment.dto';
 
 @Controller('payments')
 @UseGuards(JwtAuthGuard)
@@ -31,6 +35,46 @@ export class PaymentsController {
   @Get('due-date')
   getFeeDueDate() {
     return this.paymentsService.getFeeDueDate();
+  }
+
+  @Put('student/:studentId/fee-setup')
+  setupStudentFee(
+    @Param('studentId')
+    studentId: string,
+
+    @Body()
+    setupStudentFeeDto:
+      SetupStudentFeeDto,
+  ) {
+    return this.paymentsService.setupStudentFee(
+      studentId,
+      setupStudentFeeDto,
+    );
+  }
+
+  @Post('student/:studentId/collect')
+  collectStudentPayment(
+    @Param('studentId')
+    studentId: string,
+
+    @Body()
+    collectStudentPaymentDto:
+      CollectStudentPaymentDto,
+  ) {
+    return this.paymentsService.collectStudentPayment(
+      studentId,
+      collectStudentPaymentDto,
+    );
+  }
+
+  @Post('student/:studentId/reset-fee')
+  resetStudentFee(
+    @Param('studentId')
+    studentId: string,
+  ) {
+    return this.paymentsService.resetStudentFee(
+      studentId,
+    );
   }
 
   @Get()

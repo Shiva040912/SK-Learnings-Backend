@@ -8,7 +8,6 @@ import {
 
 import { StudentsService } from './students.service';
 import { StudentsController } from './students.controller';
-import { PaymentsModule } from '../payments/payments.module';
 
 @Module({
   imports: [
@@ -18,10 +17,18 @@ import { PaymentsModule } from '../payments/payments.module';
         schema: StudentSchema,
       },
     ]),
-    PaymentsModule,
   ],
-  controllers: [StudentsController],
-  providers: [StudentsService],
-  exports: [StudentsService],
+
+  controllers: [
+    StudentsController,
+  ],
+
+  providers: [
+    StudentsService,
+  ],
+
+  exports: [
+    StudentsService,
+  ],
 })
 export class StudentsModule {}

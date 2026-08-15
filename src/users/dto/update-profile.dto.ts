@@ -1,21 +1,18 @@
 import {
   IsEmail,
-  IsIn,
-  IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
-  MinLength,
 } from 'class-validator';
 
-export class CreateUserDto {
+export class UpdateProfileDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  name!: string;
+  name?: string;
 
+  @IsOptional()
   @IsEmail()
-  @IsNotEmpty()
-  email!: string;
+  email?: string;
 
   @IsOptional()
   @IsString()
@@ -28,11 +25,4 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   profileImage?: string;
-
-  @IsString()
-  @MinLength(6)
-  password!: string;
-
-  @IsIn(['admin', 'trainer'])
-  role!: 'admin' | 'trainer';
 }

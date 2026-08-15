@@ -1,11 +1,10 @@
 import {
+  IsDateString,
   IsEmail,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsString,
   Matches,
-  Min,
 } from 'class-validator';
 
 export class CreateStudentDto {
@@ -20,6 +19,10 @@ export class CreateStudentDto {
   @IsString()
   @IsNotEmpty()
   parentName!: string;
+
+  @IsDateString()
+  @IsNotEmpty()
+  dateOfBirth!: string;
 
   @IsString()
   @IsNotEmpty()
@@ -38,9 +41,12 @@ export class CreateStudentDto {
   alternatePhone?: string;
 
   @IsOptional()
-  @IsEmail({}, {
-    message: 'Please enter a valid email address',
-  })
+  @IsEmail(
+    {},
+    {
+      message: 'Please enter a valid email address',
+    },
+  )
   email?: string;
 
   @IsString()
@@ -50,8 +56,7 @@ export class CreateStudentDto {
   @IsString()
   @IsNotEmpty()
   @Matches(/^\d{4} \d{4} \d{4}$/, {
-    message:
-      'Aadhaar number must be in 1234 5678 9878 format',
+    message: 'Aadhaar number must be in 1234 5678 9878 format',
   })
   idproof!: string;
 
@@ -66,8 +71,4 @@ export class CreateStudentDto {
   @IsOptional()
   @IsString()
   address?: string;
-
-  @IsNumber()
-  @Min(0)
-  totalFee!: number;
 }

@@ -27,6 +27,18 @@ export class User {
   email!: string;
 
   @Prop({
+    trim: true,
+    default: '',
+  })
+  phone?: string;
+
+  @Prop({
+    trim: true,
+    default: '',
+  })
+  profileImage?: string;
+
+  @Prop({
     required: true,
   })
   password!: string;

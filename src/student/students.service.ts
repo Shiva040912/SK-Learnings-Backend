@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -14,18 +13,18 @@ import {
 
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
-import { PaymentsService } from '../payments/payments.service';
 
 @Injectable()
 export class StudentsService {
   constructor(
     @InjectModel(Student.name)
-    private readonly studentModel: Model<StudentDocument>,
-
-    private readonly paymentsService: PaymentsService,
+    private readonly studentModel:
+      Model<StudentDocument>,
   ) {}
 
-  private normalizeParentName(parentName: string) {
+  private normalizeParentName(
+    parentName: string,
+  ) {
     return parentName
       .trim()
       .replace(/\s+/g, ' ')
@@ -43,19 +42,21 @@ export class StudentsService {
     },
     excludeStudentId?: string,
   ) {
-    const excludeQuery = excludeStudentId
-      ? {
-          _id: {
-            $ne: excludeStudentId,
-          },
-        }
-      : {};
+    const excludeQuery =
+      excludeStudentId
+        ? {
+            _id: {
+              $ne: excludeStudentId,
+            },
+          }
+        : {};
 
     if (data.rollNo) {
       const existingRollNo =
         await this.studentModel.findOne({
           ...excludeQuery,
-          rollNo: data.rollNo.trim(),
+          rollNo:
+            data.rollNo.trim(),
         });
 
       if (existingRollNo) {
@@ -65,16 +66,21 @@ export class StudentsService {
       }
     }
 
-    if (data.phone && data.parentName) {
+    if (
+      data.phone &&
+      data.parentName
+    ) {
       const existingStudents =
         await this.studentModel.find({
           ...excludeQuery,
           $or: [
             {
-              phone: data.phone.trim(),
+              phone:
+                data.phone.trim(),
             },
             {
-              alternatePhone: data.phone.trim(),
+              alternatePhone:
+                data.phone.trim(),
             },
           ],
         });
@@ -153,9 +159,10 @@ export class StudentsService {
       const existingEmail =
         await this.studentModel.findOne({
           ...excludeQuery,
-          email: data.email
-            .trim()
-            .toLowerCase(),
+          email:
+            data.email
+              .trim()
+              .toLowerCase(),
         });
 
       if (existingEmail) {
@@ -169,7 +176,8 @@ export class StudentsService {
       const existingAadhaar =
         await this.studentModel.findOne({
           ...excludeQuery,
-          idproof: data.idproof.trim(),
+          idproof:
+            data.idproof.trim(),
         });
 
       if (existingAadhaar) {
@@ -181,7 +189,8 @@ export class StudentsService {
   }
 
   async create(
-    createStudentDto: CreateStudentDto,
+    createStudentDto:
+      CreateStudentDto,
   ) {
     await this.validateUniqueFields({
       parentName:
@@ -203,49 +212,81 @@ export class StudentsService {
         createStudentDto.idproof,
     });
 
-    const student = new this.studentModel({
-      ...createStudentDto,
+    const student =
+      new this.studentModel({
+        studentName:
+          createStudentDto.studentName.trim(),
 
-      studentName:
-        createStudentDto.studentName.trim(),
+        rollNo:
+          createStudentDto.rollNo.trim(),
 
-      parentName:
-        createStudentDto.parentName
-          .trim()
-          .replace(/\s+/g, ' '),
+        parentName:
+          createStudentDto.parentName
+            .trim()
+            .replace(/\s+/g, ' '),
 
-      rollNo:
-        createStudentDto.rollNo.trim(),
+        dateOfBirth:
+          new Date(
+            createStudentDto.dateOfBirth,
+          ),
 
-      phone:
-        createStudentDto.phone.trim(),
+        phone:
+          createStudentDto.phone.trim(),
 
-      alternatePhone:
-        createStudentDto.alternatePhone
-          ?.trim() || undefined,
+        alternatePhone:
+          createStudentDto.alternatePhone
+            ?.trim() || undefined,
 
-      email:
-        createStudentDto.email
-          ?.trim()
-          .toLowerCase() || undefined,
+        email:
+          createStudentDto.email
+            ?.trim()
+            .toLowerCase() ||
+          undefined,
 
-      course:
-        createStudentDto.course.trim(),
+        course:
+          createStudentDto.course.trim(),
 
-      idproof:
-        createStudentDto.idproof.trim(),
+        idproof:
+          createStudentDto.idproof.trim(),
 
-      paidAmount: 0,
+        batch:
+          createStudentDto.batch
+            ?.trim() || undefined,
 
-      pendingAmount:
-        createStudentDto.totalFee,
+        schoolName:
+          createStudentDto.schoolName
+            ?.trim() || undefined,
 
-      paymentStatus: 'unpaid',
+        address:
+          createStudentDto.address
+            ?.trim() || undefined,
 
-      paymentMethod: undefined,
+        totalFee: 0,
 
-      isActive: true,
-    });
+        feeType: undefined,
+
+        feeEndingDate: undefined,
+
+        feeSetupCompleted: false,
+
+        selectedMonths: undefined,
+
+        monthlyAmount: 0,
+
+        paidMonths: 0,
+
+        paidAmount: 0,
+
+        pendingAmount: 0,
+
+        paymentStatus:
+          'unpaid',
+
+        paymentMethod:
+          undefined,
+
+        isActive: true,
+      });
 
     return student.save();
   }
@@ -253,12 +294,18 @@ export class StudentsService {
   async findAll() {
     return this.studentModel
       .find()
-      .sort({ createdAt: -1 });
+      .sort({
+        createdAt: -1,
+      });
   }
 
-  async findOne(id: string) {
+  async findOne(
+    id: string,
+  ) {
     const student =
-      await this.studentModel.findById(id);
+      await this.studentModel.findById(
+        id,
+      );
 
     if (!student) {
       throw new NotFoundException(
@@ -271,43 +318,38 @@ export class StudentsService {
 
   async update(
     id: string,
-    updateStudentDto: UpdateStudentDto,
+    updateStudentDto:
+      UpdateStudentDto,
   ) {
     const student =
       await this.findOne(id);
 
-    const previousPaymentStatus =
-      student.paymentStatus;
-
     const {
-      paymentMethod,
+      totalFee,
+      feeType,
+      feeEndingDate,
+      feeSetupCompleted,
+      selectedMonths,
+      monthlyAmount,
+      paidMonths,
       paidAmount,
       pendingAmount,
-      ...studentUpdateData
+      paymentStatus,
+      paymentMethod,
+      ...studentData
     } = updateStudentDto;
 
     const finalParentName =
-      studentUpdateData.parentName ??
+      studentData.parentName ??
       student.parentName;
 
     const finalPhone =
-      studentUpdateData.phone ??
+      studentData.phone ??
       student.phone;
 
     const finalAlternatePhone =
-      studentUpdateData.alternatePhone ??
+      studentData.alternatePhone ??
       student.alternatePhone;
-
-    if (
-      finalPhone &&
-      finalAlternatePhone &&
-      finalPhone.trim() ===
-        finalAlternatePhone.trim()
-    ) {
-      throw new ConflictException(
-        'Phone number and alternative phone number cannot be the same',
-      );
-    }
 
     await this.validateUniqueFields(
       {
@@ -315,7 +357,7 @@ export class StudentsService {
           finalParentName,
 
         rollNo:
-          studentUpdateData.rollNo,
+          studentData.rollNo,
 
         phone:
           finalPhone,
@@ -324,175 +366,137 @@ export class StudentsService {
           finalAlternatePhone,
 
         email:
-          studentUpdateData.email,
+          studentData.email,
 
         idproof:
-          studentUpdateData.idproof,
+          studentData.idproof,
       },
       id,
     );
 
-    const isChangingToPaid =
-      previousPaymentStatus !== 'paid' &&
-      studentUpdateData.paymentStatus ===
-        'paid';
-
     if (
-      isChangingToPaid &&
-      !paymentMethod
+      studentData.studentName !==
+      undefined
     ) {
-      throw new BadRequestException(
-        'Payment method is required when marking student as paid',
-      );
+      student.studentName =
+        studentData.studentName.trim();
     }
 
     if (
-      paymentMethod &&
-      ![
-        'cash',
-        'bank',
-        'upi',
-        'qr',
-      ].includes(paymentMethod)
+      studentData.rollNo !==
+      undefined
     ) {
-      throw new BadRequestException(
-        'Invalid payment method',
-      );
+      student.rollNo =
+        studentData.rollNo.trim();
     }
 
     if (
-      studentUpdateData.studentName
+      studentData.parentName !==
+      undefined
     ) {
-      studentUpdateData.studentName =
-        studentUpdateData.studentName.trim();
-    }
-
-    if (
-      studentUpdateData.parentName
-    ) {
-      studentUpdateData.parentName =
-        studentUpdateData.parentName
+      student.parentName =
+        studentData.parentName
           .trim()
           .replace(/\s+/g, ' ');
     }
 
     if (
-      studentUpdateData.rollNo
+      studentData.dateOfBirth !==
+      undefined
     ) {
-      studentUpdateData.rollNo =
-        studentUpdateData.rollNo.trim();
+      student.dateOfBirth =
+        new Date(
+          studentData.dateOfBirth,
+        );
     }
 
     if (
-      studentUpdateData.phone
+      studentData.phone !==
+      undefined
     ) {
-      studentUpdateData.phone =
-        studentUpdateData.phone.trim();
+      student.phone =
+        studentData.phone.trim();
     }
 
     if (
-      studentUpdateData.alternatePhone
+      studentData.alternatePhone !==
+      undefined
     ) {
-      studentUpdateData.alternatePhone =
-        studentUpdateData.alternatePhone.trim();
-    }
-
-    if (
-      studentUpdateData.email
-    ) {
-      studentUpdateData.email =
-        studentUpdateData.email
-          .trim()
-          .toLowerCase();
-    }
-
-    if (
-      studentUpdateData.course
-    ) {
-      studentUpdateData.course =
-        studentUpdateData.course.trim();
-    }
-
-    if (
-      studentUpdateData.idproof
-    ) {
-      studentUpdateData.idproof =
-        studentUpdateData.idproof.trim();
-    }
-
-    const cleanStudentUpdateData =
-      Object.fromEntries(
-        Object.entries(
-          studentUpdateData,
-        ).filter(
-          ([, value]) =>
-            value !== undefined,
-        ),
-      );
-
-    Object.assign(
-      student,
-      cleanStudentUpdateData,
-    );
-
-    if (
-      student.paymentStatus === 'paid'
-    ) {
-      student.paidAmount =
-        student.totalFee;
-
-      student.pendingAmount = 0;
-
-      if (paymentMethod) {
-        student.paymentMethod =
-          paymentMethod;
-      }
-    } else {
-      student.paymentStatus =
-        'unpaid';
-
-      student.paidAmount = 0;
-
-      student.pendingAmount =
-        student.totalFee;
-
-      student.paymentMethod =
+      student.alternatePhone =
+        studentData.alternatePhone
+          .trim() ||
         undefined;
     }
 
-    const updatedStudent =
-      await student.save();
-
-    if (isChangingToPaid) {
-      await this.paymentsService.createPayment({
-        studentId:
-          updatedStudent._id.toString(),
-
-        studentName:
-          updatedStudent.studentName,
-
-        phone:
-          updatedStudent.phone,
-
-        course:
-          updatedStudent.course,
-
-        amount:
-          updatedStudent.totalFee,
-
-        paymentMethod:
-          paymentMethod as
-            | 'cash'
-            | 'bank'
-            | 'upi'
-            | 'qr',
-      });
+    if (
+      studentData.email !==
+      undefined
+    ) {
+      student.email =
+        studentData.email
+          .trim()
+          .toLowerCase() ||
+        undefined;
     }
 
-    return updatedStudent;
+    if (
+      studentData.course !==
+      undefined
+    ) {
+      student.course =
+        studentData.course.trim();
+    }
+
+    if (
+      studentData.idproof !==
+      undefined
+    ) {
+      student.idproof =
+        studentData.idproof.trim();
+    }
+
+    if (
+      studentData.batch !==
+      undefined
+    ) {
+      student.batch =
+        studentData.batch.trim() ||
+        undefined;
+    }
+
+    if (
+      studentData.schoolName !==
+      undefined
+    ) {
+      student.schoolName =
+        studentData.schoolName
+          .trim() ||
+        undefined;
+    }
+
+    if (
+      studentData.address !==
+      undefined
+    ) {
+      student.address =
+        studentData.address.trim() ||
+        undefined;
+    }
+
+    if (
+      studentData.isActive !==
+      undefined
+    ) {
+      student.isActive =
+        studentData.isActive;
+    }
+
+    return student.save();
   }
 
-  async remove(id: string) {
+  async remove(
+    id: string,
+  ) {
     const student =
       await this.studentModel.findByIdAndDelete(
         id,

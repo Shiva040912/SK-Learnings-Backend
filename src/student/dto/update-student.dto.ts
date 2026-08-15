@@ -1,11 +1,13 @@
 import {
   IsBoolean,
+  IsDateString,
   IsEmail,
   IsIn,
   IsNumber,
   IsOptional,
   IsString,
   Matches,
+  Max,
   Min,
 } from 'class-validator';
 
@@ -21,6 +23,10 @@ export class UpdateStudentDto {
   @IsOptional()
   @IsString()
   parentName?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateOfBirth?: string;
 
   @IsOptional()
   @IsString()
@@ -54,8 +60,7 @@ export class UpdateStudentDto {
   @IsOptional()
   @IsString()
   @Matches(/^\d{4} \d{4} \d{4}$/, {
-    message:
-      'Aadhaar number must be in 1234 5678 9878 format',
+    message: 'Aadhaar number must be in 1234 5678 9878 format',
   })
   idproof?: string;
 
@@ -77,6 +82,34 @@ export class UpdateStudentDto {
   totalFee?: number;
 
   @IsOptional()
+  @IsIn(['monthly', 'partial', 'yearly'])
+  feeType?: 'monthly' | 'partial' | 'yearly';
+
+  @IsOptional()
+  @IsDateString()
+  feeEndingDate?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  feeSetupCompleted?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(3)
+  @Max(12)
+  selectedMonths?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  monthlyAmount?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  paidMonths?: number;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   paidAmount?: number;
@@ -87,8 +120,8 @@ export class UpdateStudentDto {
   pendingAmount?: number;
 
   @IsOptional()
-  @IsIn(['unpaid', 'paid'])
-  paymentStatus?: 'unpaid' | 'paid';
+  @IsIn(['unpaid', 'partial', 'paid'])
+  paymentStatus?: 'unpaid' | 'partial' | 'paid';
 
   @IsOptional()
   @IsIn(['cash', 'bank', 'upi', 'qr'])
