@@ -9,9 +9,11 @@ import {
 } from '@nestjs/common';
 
 import { PaymentsService } from './payments.service';
+
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
 import { SetupStudentFeeDto } from './dto/setup-student-fee.dto';
+
 import { CollectStudentPaymentDto } from './dto/collect-student-payment.dto';
 
 @Controller('payments')
@@ -22,22 +24,30 @@ export class PaymentsController {
       PaymentsService,
   ) {}
 
+  
+
   @Put('due-date')
   setFeeDueDate(
     @Body('feeDueDate')
     feeDueDate: string,
   ) {
-    return this.paymentsService.setFeeDueDate(
-      feeDueDate,
-    );
+    return this.paymentsService
+      .setFeeDueDate(
+        feeDueDate,
+      );
   }
 
   @Get('due-date')
   getFeeDueDate() {
-    return this.paymentsService.getFeeDueDate();
+    return this.paymentsService
+      .getFeeDueDate();
   }
 
-  @Put('student/:studentId/fee-setup')
+  
+
+  @Put(
+    'student/:studentId/fee-setup',
+  )
   setupStudentFee(
     @Param('studentId')
     studentId: string,
@@ -46,13 +56,51 @@ export class PaymentsController {
     setupStudentFeeDto:
       SetupStudentFeeDto,
   ) {
-    return this.paymentsService.setupStudentFee(
-      studentId,
-      setupStudentFeeDto,
-    );
+    return this.paymentsService
+      .setupStudentFee(
+        studentId,
+        setupStudentFeeDto,
+      );
   }
 
-  @Post('student/:studentId/collect')
+  
+
+  @Put('fee-setup/common')
+  setupCommonFee(
+    @Body()
+    setupStudentFeeDto:
+      SetupStudentFeeDto,
+  ) {
+    return this.paymentsService
+      .setupCommonFee(
+        setupStudentFeeDto,
+      );
+  }
+
+  
+  @Put(
+    'fee-setup/course/:course',
+  )
+  setupCourseWiseFee(
+    @Param('course')
+    course: string,
+
+    @Body()
+    setupStudentFeeDto:
+      SetupStudentFeeDto,
+  ) {
+    return this.paymentsService
+      .setupCourseWiseFee(
+        course,
+        setupStudentFeeDto,
+      );
+  }
+
+  
+
+  @Post(
+    'student/:studentId/collect',
+  )
   collectStudentPayment(
     @Param('studentId')
     studentId: string,
@@ -61,25 +109,34 @@ export class PaymentsController {
     collectStudentPaymentDto:
       CollectStudentPaymentDto,
   ) {
-    return this.paymentsService.collectStudentPayment(
-      studentId,
-      collectStudentPaymentDto,
-    );
+    return this.paymentsService
+      .collectStudentPayment(
+        studentId,
+        collectStudentPaymentDto,
+      );
   }
 
-  @Post('student/:studentId/reset-fee')
+  
+
+  @Post(
+    'student/:studentId/reset-fee',
+  )
   resetStudentFee(
     @Param('studentId')
     studentId: string,
   ) {
-    return this.paymentsService.resetStudentFee(
-      studentId,
-    );
+    return this.paymentsService
+      .resetStudentFee(
+        studentId,
+      );
   }
+
+  
 
   @Get()
   getPayments() {
-    return this.paymentsService.getPayments();
+    return this.paymentsService
+      .getPayments();
   }
 
   @Get(':id')
@@ -87,8 +144,9 @@ export class PaymentsController {
     @Param('id')
     id: string,
   ) {
-    return this.paymentsService.getPaymentById(
-      id,
-    );
+    return this.paymentsService
+      .getPaymentById(
+        id,
+      );
   }
 }

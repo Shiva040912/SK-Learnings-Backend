@@ -3,6 +3,7 @@ import {
   Schema,
   SchemaFactory,
 } from '@nestjs/mongoose';
+
 import {
   HydratedDocument,
   Types,
@@ -11,7 +12,9 @@ import {
 export type PaymentDocument =
   HydratedDocument<Payment>;
 
-@Schema({ timestamps: true })
+@Schema({
+  timestamps: true,
+})
 export class Payment {
   @Prop({
     type: Types.ObjectId,
@@ -80,4 +83,6 @@ export class Payment {
 }
 
 export const PaymentSchema =
-  SchemaFactory.createForClass(Payment);
+  SchemaFactory.createForClass(
+    Payment,
+  );

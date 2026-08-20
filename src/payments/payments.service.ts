@@ -3,7 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+
 import { InjectModel } from '@nestjs/mongoose';
+
 import { Model } from 'mongoose';
 
 import {
@@ -22,8 +24,23 @@ import {
 } from '../student/students.schema';
 
 import { SettingsService } from '../settings/settings.service';
+
 import { InvoiceService } from '../invoice/invoice.service';
+
 import { WhatsappService } from '../whatsapp/whatsapp.service';
+
+type FeeSetupData = {
+  totalFee: number;
+
+  feeType:
+    | 'monthly'
+    | 'partial'
+    | 'yearly';
+
+  feeEndingDate: string;
+
+  selectedMonths?: number;
+};
 
 @Injectable()
 export class PaymentsService {
@@ -75,6 +92,34 @@ export class PaymentsService {
         value || 0,
       ).toFixed(2),
     );
+  }
+
+  private validateBulkStudent(
+    student: StudentDocument,
+  ) {
+    const paidAmount =
+      Number(
+        student.paidAmount || 0,
+      );
+
+    /*
+     * Bulk setup must not reset an
+     * already started payment.
+     */
+    if (paidAmount > 0) {
+      return {
+        allowed: false,
+
+        reason:
+          'Payment already started for this student',
+      };
+    }
+
+    return {
+      allowed: true,
+
+      reason: null,
+    };
   }
 
   async setFeeDueDate(
@@ -167,20 +212,15 @@ export class PaymentsService {
     return payment;
   }
 
+  /*
+   * ==================================================
+   * 1. INDIVIDUAL STUDENT FEE SETUP
+   * ==================================================
+   */
+
   async setupStudentFee(
     studentId: string,
-    data: {
-      totalFee: number;
-
-      feeType:
-        | 'monthly'
-        | 'partial'
-        | 'yearly';
-
-      feeEndingDate: string;
-
-      selectedMonths?: number;
-    },
+    data: FeeSetupData,
   ) {
     const student =
       await this.studentModel.findById(
@@ -325,7 +365,8 @@ export class PaymentsService {
     student.feeSetupCompleted =
       true;
 
-    student.paidAmount = 0;
+    student.paidAmount =
+      0;
 
     student.pendingAmount =
       this.roundMoney(
@@ -338,7 +379,14 @@ export class PaymentsService {
     student.paymentMethod =
       undefined;
 
-    student.paidMonths = 0;
+    student.paidMonths =
+      0;
+
+    student.lastFeeReminderSentAt =
+      undefined;
+
+    student.feeReminderCount =
+      0;
 
     if (
       data.feeType ===
@@ -353,31 +401,35 @@ export class PaymentsService {
       student.selectedMonths =
         undefined;
 
-      student.monthlyAmount = 0;
+      student.monthlyAmount =
+        0;
     }
 
     await student.save();
 
     const invoice =
-      await this.invoiceService.createFeeSetupInvoice(
-        student._id.toString(),
-      );
+      await this.invoiceService
+        .createFeeSetupInvoice(
+          student._id.toString(),
+        );
 
     try {
       const notificationSettings =
-        await this.settingsService.getNotificationSettings();
+        await this.settingsService
+          .getNotificationSettings();
 
       if (
         notificationSettings.whatsappEnabled &&
         invoice
       ) {
         const pdfBuffer =
-          await this.invoiceService.generateInvoicePdfByDocument(
-            invoice,
-          );
+          await this.invoiceService
+            .generateInvoicePdfByDocument(
+              invoice,
+            );
 
-        await this.whatsappService.sendFeePaymentInvoice(
-          {
+        await this.whatsappService
+          .sendFeePaymentInvoice({
             phone:
               student.phone,
 
@@ -409,8 +461,7 @@ export class PaymentsService {
 
             invoiceNumber:
               invoice.invoiceNumber,
-          },
-        );
+          });
       }
     } catch (error) {
       console.error(
@@ -424,6 +475,9 @@ export class PaymentsService {
         invoice
           ? 'Student fee setup completed and invoice generated successfully'
           : 'Student fee setup completed successfully',
+
+      setupMode:
+        'individual',
 
       student,
 
@@ -451,6 +505,348 @@ export class PaymentsService {
       },
     };
   }
+
+  /*
+   * ==================================================
+   * 2. COMMON FEE + COMMON END DATE
+   * ==================================================
+   */
+
+  async setupCommonFee(
+    data: FeeSetupData,
+  ) {
+    const students =
+      await this.studentModel.find({});
+
+    if (
+      students.length === 0
+    ) {
+      throw new NotFoundException(
+        'No students found',
+      );
+    }
+
+    const successStudents:
+      any[] = [];
+
+    const skippedStudents:
+      any[] = [];
+
+    const failedStudents:
+      any[] = [];
+
+    for (
+      const student of students
+    ) {
+      const validation =
+        this.validateBulkStudent(
+          student,
+        );
+
+      if (
+        !validation.allowed
+      ) {
+        skippedStudents.push({
+          studentId:
+            student._id,
+
+          studentName:
+            student.studentName,
+
+          rollNo:
+            student.rollNo,
+
+          course:
+            student.course,
+
+          reason:
+            validation.reason,
+        });
+
+        continue;
+      }
+
+      try {
+        const result =
+          await this.setupStudentFee(
+            student._id.toString(),
+            data,
+          );
+
+        successStudents.push({
+          studentId:
+            student._id,
+
+          studentName:
+            student.studentName,
+
+          rollNo:
+            student.rollNo,
+
+          course:
+            student.course,
+
+          invoiceNumber:
+            result.invoice
+              ?.invoiceNumber ||
+            null,
+        });
+      } catch (error) {
+        failedStudents.push({
+          studentId:
+            student._id,
+
+          studentName:
+            student.studentName,
+
+          rollNo:
+            student.rollNo,
+
+          course:
+            student.course,
+
+          reason:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        });
+      }
+    }
+
+    return {
+      message:
+        'Common fee setup completed',
+
+      setupMode:
+        'common',
+
+      totalStudents:
+        students.length,
+
+      successCount:
+        successStudents.length,
+
+      skippedCount:
+        skippedStudents.length,
+
+      failedCount:
+        failedStudents.length,
+
+      commonFee: {
+        totalFee:
+          Number(
+            data.totalFee,
+          ),
+
+        feeType:
+          data.feeType,
+
+        feeEndingDate:
+          data.feeEndingDate,
+
+        selectedMonths:
+          data.selectedMonths ||
+          null,
+      },
+
+      successStudents,
+
+      skippedStudents,
+
+      failedStudents,
+    };
+  }
+
+  /*
+   * ==================================================
+   * 3. COURSE-WISE FEE + COURSE END DATE
+   * ==================================================
+   */
+
+  async setupCourseWiseFee(
+    course: string,
+    data: FeeSetupData,
+  ) {
+    const courseName =
+      decodeURIComponent(
+        String(
+          course || '',
+        ),
+      ).trim();
+
+    if (!courseName) {
+      throw new BadRequestException(
+        'Course is required',
+      );
+    }
+
+    /*
+     * Case insensitive exact match.
+     */
+    const escapedCourse =
+      courseName.replace(
+        /[.*+?^${}()|[\]\\]/g,
+        '\\$&',
+      );
+
+    const students =
+      await this.studentModel.find({
+        course: {
+          $regex:
+            `^${escapedCourse}$`,
+
+          $options:
+            'i',
+        },
+      });
+
+    if (
+      students.length === 0
+    ) {
+      throw new NotFoundException(
+        `No students found for ${courseName}`,
+      );
+    }
+
+    const successStudents:
+      any[] = [];
+
+    const skippedStudents:
+      any[] = [];
+
+    const failedStudents:
+      any[] = [];
+
+    for (
+      const student of students
+    ) {
+      const validation =
+        this.validateBulkStudent(
+          student,
+        );
+
+      if (
+        !validation.allowed
+      ) {
+        skippedStudents.push({
+          studentId:
+            student._id,
+
+          studentName:
+            student.studentName,
+
+          rollNo:
+            student.rollNo,
+
+          course:
+            student.course,
+
+          reason:
+            validation.reason,
+        });
+
+        continue;
+      }
+
+      try {
+        const result =
+          await this.setupStudentFee(
+            student._id.toString(),
+            data,
+          );
+
+        successStudents.push({
+          studentId:
+            student._id,
+
+          studentName:
+            student.studentName,
+
+          rollNo:
+            student.rollNo,
+
+          course:
+            student.course,
+
+          invoiceNumber:
+            result.invoice
+              ?.invoiceNumber ||
+            null,
+        });
+      } catch (error) {
+        failedStudents.push({
+          studentId:
+            student._id,
+
+          studentName:
+            student.studentName,
+
+          rollNo:
+            student.rollNo,
+
+          course:
+            student.course,
+
+          reason:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        });
+      }
+    }
+
+    return {
+      message:
+        `${courseName} course fee setup completed`,
+
+      setupMode:
+        'course',
+
+      course:
+        courseName,
+
+      totalStudents:
+        students.length,
+
+      successCount:
+        successStudents.length,
+
+      skippedCount:
+        skippedStudents.length,
+
+      failedCount:
+        failedStudents.length,
+
+      courseFee: {
+        totalFee:
+          Number(
+            data.totalFee,
+          ),
+
+        feeType:
+          data.feeType,
+
+        feeEndingDate:
+          data.feeEndingDate,
+
+        selectedMonths:
+          data.selectedMonths ||
+          null,
+      },
+
+      successStudents,
+
+      skippedStudents,
+
+      failedStudents,
+    };
+  }
+
+  /*
+   * ==================================================
+   * COLLECT PAYMENT
+   * ==================================================
+   */
 
   async collectStudentPayment(
     studentId: string,
@@ -499,9 +895,11 @@ export class PaymentsService {
     }
 
     const feeSettings =
-      await this.settingsService.getFeeSettings();
+      await this.settingsService
+        .getFeeSettings();
 
-    let paymentAmount = 0;
+    let paymentAmount =
+      0;
 
     if (
       student.feeType ===
@@ -690,26 +1088,29 @@ export class PaymentsService {
       });
 
     const invoice =
-      await this.invoiceService.createPaymentReceiptInvoice(
-        student._id.toString(),
-        payment._id.toString(),
-      );
+      await this.invoiceService
+        .createPaymentReceiptInvoice(
+          student._id.toString(),
+          payment._id.toString(),
+        );
 
     try {
       const notificationSettings =
-        await this.settingsService.getNotificationSettings();
+        await this.settingsService
+          .getNotificationSettings();
 
       if (
         notificationSettings.whatsappEnabled &&
         invoice
       ) {
         const pdfBuffer =
-          await this.invoiceService.generateInvoicePdfByDocument(
-            invoice,
-          );
+          await this.invoiceService
+            .generateInvoicePdfByDocument(
+              invoice,
+            );
 
-        await this.whatsappService.sendFeePaymentReceipt(
-          {
+        await this.whatsappService
+          .sendFeePaymentReceipt({
             phone:
               student.phone,
 
@@ -741,8 +1142,7 @@ export class PaymentsService {
 
             receiptNumber:
               invoice.invoiceNumber,
-          },
-        );
+          });
       }
     } catch (error) {
       console.error(
@@ -812,6 +1212,12 @@ export class PaymentsService {
       },
     };
   }
+
+  /*
+   * ==================================================
+   * CREATE PAYMENT RECORD
+   * ==================================================
+   */
 
   async createPayment(
     data: {
@@ -887,6 +1293,12 @@ export class PaymentsService {
     return payment.save();
   }
 
+  /*
+   * ==================================================
+   * RESET STUDENT FEE
+   * ==================================================
+   */
+
   async resetStudentFee(
     studentId: string,
   ) {
@@ -914,11 +1326,13 @@ export class PaymentsService {
         student._id,
     });
 
-    await this.invoiceService.deactivateStudentInvoices(
-      student._id.toString(),
-    );
+    await this.invoiceService
+      .deactivateStudentInvoices(
+        student._id.toString(),
+      );
 
-    student.totalFee = 0;
+    student.totalFee =
+      0;
 
     student.feeType =
       undefined;
@@ -932,13 +1346,17 @@ export class PaymentsService {
     student.selectedMonths =
       undefined;
 
-    student.monthlyAmount = 0;
+    student.monthlyAmount =
+      0;
 
-    student.paidMonths = 0;
+    student.paidMonths =
+      0;
 
-    student.paidAmount = 0;
+    student.paidAmount =
+      0;
 
-    student.pendingAmount = 0;
+    student.pendingAmount =
+      0;
 
     student.paymentStatus =
       'unpaid';
@@ -949,7 +1367,8 @@ export class PaymentsService {
     student.lastFeeReminderSentAt =
       undefined;
 
-    student.feeReminderCount = 0;
+    student.feeReminderCount =
+      0;
 
     await student.save();
 
