@@ -349,9 +349,30 @@ export class PaymentsService {
   async getPublicStudentPayment(
     studentId: string,
   ) {
+    const cleanStudentId =
+      String(
+        studentId ||
+          '',
+      )
+        .replace(
+          /\{\{1\}\}/g,
+          '',
+        )
+        .trim();
+
+    if (
+      !/^[a-fA-F0-9]{24}$/.test(
+        cleanStudentId,
+      )
+    ) {
+      throw new BadRequestException(
+        'Invalid student payment link',
+      );
+    }
+
     const student =
       await this.studentModel.findById(
-        studentId,
+        cleanStudentId,
       );
 
     if (!student) {
