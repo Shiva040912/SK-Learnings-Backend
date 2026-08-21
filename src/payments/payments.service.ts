@@ -187,6 +187,248 @@ export class PaymentsService {
     };
   }
 
+  async getPublicPaymentSettings() {
+    const setting =
+      await this.paymentSettingModel
+        .findOne({
+          isActive: true,
+        })
+        .sort({
+          updatedAt: -1,
+        });
+
+    return {
+      upiId:
+        setting?.upiId ||
+        '',
+
+      receiverName:
+        setting?.receiverName ||
+        '',
+
+      paymentPhone:
+        setting?.paymentPhone ||
+        '',
+
+      upiQrImage:
+        setting?.upiQrImage ||
+        '',
+
+      feeDueDate:
+        setting?.feeDueDate ||
+        null,
+    };
+  }
+
+  async updatePublicPaymentSettings(
+    data: {
+      upiId?: string;
+      receiverName?: string;
+      paymentPhone?: string;
+      upiQrImage?: string;
+    },
+  ) {
+    const upiId =
+      String(
+        data.upiId ||
+          '',
+      ).trim();
+
+    const receiverName =
+      String(
+        data.receiverName ||
+          '',
+      ).trim();
+
+    const paymentPhone =
+      String(
+        data.paymentPhone ||
+          '',
+      )
+        .replace(
+          /\D/g,
+          '',
+        )
+        .trim();
+
+    const upiQrImage =
+      String(
+        data.upiQrImage ||
+          '',
+      ).trim();
+
+    if (
+      !upiId ||
+      !upiId.includes('@')
+    ) {
+      throw new BadRequestException(
+        'Enter a valid UPI ID',
+      );
+    }
+
+    if (!receiverName) {
+      throw new BadRequestException(
+        'Receiver name is required',
+      );
+    }
+
+    if (
+      !/^[6-9]\d{9}$/.test(
+        paymentPhone,
+      )
+    ) {
+      throw new BadRequestException(
+        'Enter a valid 10 digit payment phone number',
+      );
+    }
+
+    if (!upiQrImage) {
+      throw new BadRequestException(
+        'Payment QR image is required',
+      );
+    }
+
+    let setting =
+      await this.paymentSettingModel
+        .findOne({
+          isActive: true,
+        })
+        .sort({
+          updatedAt: -1,
+        });
+
+    if (!setting) {
+      setting =
+        new this.paymentSettingModel({
+          feeDueDate:
+            new Date(),
+
+          isActive:
+            true,
+        });
+    }
+
+    setting.upiId =
+      upiId;
+
+    setting.receiverName =
+      receiverName;
+
+    setting.paymentPhone =
+      paymentPhone;
+
+    setting.upiQrImage =
+      upiQrImage;
+
+    setting.isActive =
+      true;
+
+    await setting.save();
+
+    return {
+      message:
+        'UPI payment settings updated successfully',
+
+      upiId:
+        setting.upiId,
+
+      receiverName:
+        setting.receiverName,
+
+      paymentPhone:
+        setting.paymentPhone,
+
+      upiQrImage:
+        setting.upiQrImage,
+
+      feeDueDate:
+        setting.feeDueDate,
+    };
+  }
+
+  async getPublicStudentPayment(
+    studentId: string,
+  ) {
+    const student =
+      await this.studentModel.findById(
+        studentId,
+      );
+
+    if (!student) {
+      throw new NotFoundException(
+        'Student not found',
+      );
+    }
+
+    if (
+      !student.feeSetupCompleted
+    ) {
+      throw new BadRequestException(
+        'Fee has not been setup for this student',
+      );
+    }
+
+    const setting =
+      await this.paymentSettingModel
+        .findOne({
+          isActive: true,
+        })
+        .sort({
+          updatedAt: -1,
+        });
+
+    return {
+      student: {
+        id:
+          student._id,
+
+        studentName:
+          student.studentName,
+
+        rollNo:
+          student.rollNo,
+
+        course:
+          student.course,
+
+        batch:
+          student.batch,
+
+        paymentStatus:
+          student.paymentStatus,
+
+        paymentAmount:
+          Number(
+            student.pendingAmount ||
+              0,
+          ),
+      },
+
+      payment: {
+        feeDueDate:
+          student.feeEndingDate ||
+          setting?.feeDueDate ||
+          null,
+
+        upiId:
+          setting?.upiId ||
+          '',
+
+        receiverName:
+          setting?.receiverName ||
+          '',
+
+        paymentPhone:
+          setting?.paymentPhone ||
+          '',
+
+        upiQrImage:
+          setting?.upiQrImage ||
+          '',
+      },
+    };
+  }
+
   async getPayments() {
     return this.paymentModel
       .find()
@@ -438,6 +680,9 @@ export class PaymentsService {
 
             studentName:
               student.studentName,
+
+            studentId:
+              student._id.toString(),
 
             totalFee:
               Number(

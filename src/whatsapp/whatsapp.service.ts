@@ -30,9 +30,17 @@ type WhatsappHeaderComponent = {
   parameters: WhatsappDocumentParameter[];
 };
 
+type WhatsappButtonComponent = {
+  type: 'button';
+  sub_type: 'url';
+  index: '0';
+  parameters: WhatsappTextParameter[];
+};
+
 type WhatsappComponent =
   | WhatsappBodyComponent
-  | WhatsappHeaderComponent;
+  | WhatsappHeaderComponent
+  | WhatsappButtonComponent;
 
 @Injectable()
 export class WhatsappService {
@@ -388,6 +396,7 @@ export class WhatsappService {
       bodyParameters?: string[];
       mediaId?: string;
       documentFilename?: string;
+      buttonUrlParameter?: string;
     },
   ) {
     const {
@@ -469,6 +478,24 @@ export class WhatsappService {
       });
     }
 
+    if (
+      data.buttonUrlParameter &&
+      data.buttonUrlParameter.trim()
+    ) {
+      components.push({
+        type: 'button',
+        sub_type: 'url',
+        index: '0',
+        parameters: [
+          {
+            type: 'text',
+            text:
+              data.buttonUrlParameter.trim(),
+          },
+        ],
+      });
+    }
+
     const payload = {
       messaging_product:
         'whatsapp',
@@ -520,6 +547,14 @@ export class WhatsappService {
     ) {
       this.logger.log(
         `WhatsApp document media ID: ${data.mediaId}`,
+      );
+    }
+
+    if (
+      data.buttonUrlParameter
+    ) {
+      this.logger.log(
+        `WhatsApp URL button parameter: ${data.buttonUrlParameter}`,
       );
     }
 
@@ -623,22 +658,15 @@ export class WhatsappService {
   async sendFeePaymentInvoice(
     data: {
       phone: string;
-
       parentName: string;
-
       studentName: string;
-
+      studentId: string;
       totalFee: number;
-
       feeType: string;
-
       pendingAmount: number;
-
       feeEndingDate:
         Date | string;
-
       pdfBuffer: Buffer;
-
       invoiceNumber: string;
     },
   ) {
@@ -657,6 +685,15 @@ export class WhatsappService {
     ) {
       throw new BadRequestException(
         'Student name is required for fee invoice',
+      );
+    }
+
+    if (
+      !data.studentId
+        ?.trim()
+    ) {
+      throw new BadRequestException(
+        'Student ID is required for Pay Now button',
       );
     }
 
@@ -683,6 +720,15 @@ export class WhatsappService {
 
       documentFilename:
         filename,
+
+      /*
+       * Meta template URL:
+       * https://sk-learning-frontend.vercel.app/pay-fees/{{1}}
+       *
+       * Only the dynamic {{1}} value must be sent here.
+       */
+      buttonUrlParameter:
+        data.studentId.trim(),
 
       bodyParameters: [
         data.parentName.trim(),
@@ -711,13 +757,10 @@ export class WhatsappService {
   async sendFeePaymentReminder(
     data: {
       phone: string;
-
       parentName: string;
-
       studentName: string;
-
+      studentId: string;
       pendingAmount: number;
-
       dueDate:
         Date | string;
     },
@@ -740,6 +783,15 @@ export class WhatsappService {
       );
     }
 
+    if (
+      !data.studentId
+        ?.trim()
+    ) {
+      throw new BadRequestException(
+        'Student ID is required for Pay Now button',
+      );
+    }
+
     return this.sendTemplate({
       phone:
         data.phone,
@@ -749,6 +801,15 @@ export class WhatsappService {
 
       languageCode:
         'en',
+
+      /*
+       * Meta template URL:
+       * https://sk-learning-frontend.vercel.app/pay-fees/{{1}}?source=reminder
+       *
+       * Only the dynamic {{1}} value must be sent here.
+       */
+      buttonUrlParameter:
+        data.studentId.trim(),
 
       bodyParameters: [
         data.parentName.trim(),
@@ -763,6 +824,70 @@ export class WhatsappService {
           data.dueDate,
         ),
       ],
+    });
+  }
+
+  /*
+   * Backward-compatible method.
+   * Some old scheduler/notification code may still call sendFeeDueReminder().
+   * It now sends the approved fee_payment_reminder template with the required
+   * dynamic URL button parameter.
+   */
+  async sendFeeDueReminder(
+    data: {
+      phone: string;
+      parentName?: string;
+      studentName: string;
+      courseName?: string;
+      course?: string;
+      pendingAmount: number;
+      dueDate?: Date | string;
+      studentId?: string;
+      paymentLinkParam?: string;
+    },
+  ) {
+    const studentId =
+      String(
+        data.studentId ||
+          data.paymentLinkParam ||
+          '',
+      )
+        .replace(
+          /^student-/,
+          '',
+        )
+        .trim();
+
+    if (!studentId) {
+      throw new BadRequestException(
+        'Student ID is required for Pay Now button',
+      );
+    }
+
+    return this.sendFeePaymentReminder({
+      phone:
+        data.phone,
+
+      parentName:
+        String(
+          data.parentName ||
+            data.studentName,
+        ).trim(),
+
+      studentName:
+        data.studentName,
+
+      studentId,
+
+      pendingAmount:
+        Number(
+          data.pendingAmount ||
+            0,
+        ),
+
+      dueDate:
+        data.dueDate ||
+        new Date(),
     });
   }
 

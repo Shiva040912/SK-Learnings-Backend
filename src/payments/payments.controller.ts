@@ -17,15 +17,57 @@ import { SetupStudentFeeDto } from './dto/setup-student-fee.dto';
 import { CollectStudentPaymentDto } from './dto/collect-student-payment.dto';
 
 @Controller('payments')
-@UseGuards(JwtAuthGuard)
 export class PaymentsController {
   constructor(
     private readonly paymentsService:
       PaymentsService,
   ) {}
 
-  
+  /*
+   * PUBLIC STUDENT PAYMENT PAGE
+   * NO LOGIN / NO JWT
+   */
 
+  @Get('public/student/:studentId')
+  getPublicStudentPayment(
+    @Param('studentId')
+    studentId: string,
+  ) {
+    return this.paymentsService
+      .getPublicStudentPayment(
+        studentId,
+      );
+  }
+
+  /*
+   * ADMIN UPI PAYMENT SETTINGS
+   */
+
+  @UseGuards(JwtAuthGuard)
+  @Get('settings')
+  getPaymentSettings() {
+    return this.paymentsService
+      .getPublicPaymentSettings();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Put('settings')
+  updatePaymentSettings(
+    @Body()
+    body: {
+      upiId?: string;
+      receiverName?: string;
+      paymentPhone?: string;
+      upiQrImage?: string;
+    },
+  ) {
+    return this.paymentsService
+      .updatePublicPaymentSettings(
+        body,
+      );
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Put('due-date')
   setFeeDueDate(
     @Body('feeDueDate')
@@ -37,14 +79,14 @@ export class PaymentsController {
       );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get('due-date')
   getFeeDueDate() {
     return this.paymentsService
       .getFeeDueDate();
   }
 
-  
-
+  @UseGuards(JwtAuthGuard)
   @Put(
     'student/:studentId/fee-setup',
   )
@@ -63,8 +105,7 @@ export class PaymentsController {
       );
   }
 
-  
-
+  @UseGuards(JwtAuthGuard)
   @Put('fee-setup/common')
   setupCommonFee(
     @Body()
@@ -77,7 +118,7 @@ export class PaymentsController {
       );
   }
 
-  
+  @UseGuards(JwtAuthGuard)
   @Put(
     'fee-setup/course/:course',
   )
@@ -96,8 +137,7 @@ export class PaymentsController {
       );
   }
 
-  
-
+  @UseGuards(JwtAuthGuard)
   @Post(
     'student/:studentId/collect',
   )
@@ -116,8 +156,7 @@ export class PaymentsController {
       );
   }
 
-  
-
+  @UseGuards(JwtAuthGuard)
   @Post(
     'student/:studentId/reset-fee',
   )
@@ -131,14 +170,14 @@ export class PaymentsController {
       );
   }
 
-  
-
+  @UseGuards(JwtAuthGuard)
   @Get()
   getPayments() {
     return this.paymentsService
       .getPayments();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
   getPaymentById(
     @Param('id')

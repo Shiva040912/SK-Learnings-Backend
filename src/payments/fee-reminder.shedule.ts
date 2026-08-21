@@ -129,27 +129,31 @@ export class FeeReminderScheduler {
             continue;
           }
 
-          await this.whatsappService.sendFeePaymentReminder(
-            {
-              phone:
-                student.phone,
+          await this.whatsappService
+            .sendFeePaymentReminder(
+              {
+                phone:
+                  student.phone,
 
-              parentName:
-                student.parentName,
+                parentName:
+                  student.parentName,
 
-              studentName:
-                student.studentName,
+                studentName:
+                  student.studentName,
 
-              pendingAmount:
-                Number(
-                  student.pendingAmount ||
-                    0,
-                ),
+                studentId:
+                  student._id.toString(),
 
-              dueDate:
-                student.feeEndingDate,
-            },
-          );
+                pendingAmount:
+                  Number(
+                    student.pendingAmount ||
+                      0,
+                  ),
+
+                dueDate:
+                  student.feeEndingDate,
+              },
+            );
 
           student.lastFeeReminderSentAt =
             new Date();

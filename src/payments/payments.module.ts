@@ -29,6 +29,8 @@ import { InvoiceModule } from '../invoice/invoice.module';
 
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
+import { PaymentsPublicController } from './payments-public.controller';
+
 @Module({
   imports: [
     MongooseModule.forFeature([
@@ -57,6 +59,7 @@ import { WhatsappModule } from '../whatsapp/whatsapp.module';
 
   controllers: [
     PaymentsController,
+     PaymentsPublicController,
   ],
 
   providers: [

@@ -216,6 +216,9 @@ export class NotificationsService {
           studentName:
             student.studentName,
 
+          studentId:
+            student._id.toString(),
+
           pendingAmount:
             Number(
               student.pendingAmount ||
