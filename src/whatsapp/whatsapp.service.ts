@@ -803,13 +803,17 @@ export class WhatsappService {
         'en',
 
       /*
-       * Meta template URL:
-       * https://sk-learning-frontend.vercel.app/pay-fees/{{1}}?source=reminder
+       * Meta template URL must be:
+       * https://sk-learning-frontend.vercel.app/pay-fees/{{1}}
        *
-       * Only the dynamic {{1}} value must be sent here.
+       * Reminder dynamic value:
+       * <studentId>?source=reminder
+       *
+       * Final URL:
+       * https://sk-learning-frontend.vercel.app/pay-fees/<studentId>?source=reminder
        */
       buttonUrlParameter:
-        data.studentId.trim(),
+        `${data.studentId.trim()}?source=reminder`,
 
       bodyParameters: [
         data.parentName.trim(),

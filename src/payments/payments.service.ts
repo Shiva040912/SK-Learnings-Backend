@@ -358,6 +358,7 @@ export class PaymentsService {
           /\{\{1\}\}/g,
           '',
         )
+        .split('?')[0]
         .trim();
 
     if (
