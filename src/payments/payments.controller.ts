@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -153,6 +154,24 @@ export class PaymentsController {
       .collectStudentPayment(
         studentId,
         collectStudentPaymentDto,
+      );
+  }
+
+  /*
+   * Clears only transaction history.
+   * Fee totals and installment status are preserved.
+   */
+  @UseGuards(JwtAuthGuard)
+  @Delete(
+    'student/:studentId/history',
+  )
+  clearStudentPaymentHistory(
+    @Param('studentId')
+    studentId: string,
+  ) {
+    return this.paymentsService
+      .clearStudentPaymentHistory(
+        studentId,
       );
   }
 

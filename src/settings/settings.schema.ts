@@ -1,3 +1,6 @@
+
+
+
 import {
   Prop,
   Schema,
@@ -17,24 +20,25 @@ export class Settings {
   })
   monthlyFeeEnabled!: boolean;
 
+  /*
+   * Kept for backward compatibility.
+   * Monthly fee setup no longer has a fixed maximum month limit.
+   */
   @Prop({
     default: 12,
-    min: 3,
-    max: 12,
+    min: 1,
   })
   defaultMonths!: number;
 
   @Prop({
-    default: 3,
+    default: 1,
     min: 1,
-    max: 12,
   })
   minimumMonths!: number;
 
   @Prop({
     default: 12,
-    min: 3,
-    max: 12,
+    min: 1,
   })
   maximumMonths!: number;
 
@@ -43,6 +47,10 @@ export class Settings {
   })
   partialFeeEnabled!: boolean;
 
+  /*
+   * Legacy field retained so existing data/settings do not break.
+   * Partial payment collection no longer enforces this minimum.
+   */
   @Prop({
     default: 10000,
     min: 1,
@@ -53,6 +61,42 @@ export class Settings {
     default: true,
   })
   yearlyFeeEnabled!: boolean;
+
+  /*
+   * Controls whether the Payment page can apply one setup
+   * to all eligible students.
+   */
+  @Prop({
+    default: true,
+  })
+  commonFeeSetupEnabled!: boolean;
+
+  /*
+   * Controls whether the Payment page can apply one setup
+   * to all eligible students in a selected course.
+   */
+  @Prop({
+    default: true,
+  })
+  courseWiseFeeSetupEnabled!: boolean;
+
+  /*
+   * Monthly + Partial students share one recurring fee cycle.
+   * These values are calendar day numbers (1-31), not fixed dates.
+   */
+  @Prop({
+    default: 1,
+    min: 1,
+    max: 31,
+  })
+  recurringFeeStartDay!: number;
+
+  @Prop({
+    default: 10,
+    min: 1,
+    max: 31,
+  })
+  recurringFeeDueDay!: number;
 
   @Prop({
     default: false,

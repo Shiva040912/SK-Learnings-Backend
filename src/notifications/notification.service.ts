@@ -205,13 +205,10 @@ export class NotificationsService {
     }
 
     const whatsappResult =
-      await this.whatsappService.sendFeePaymentReminder(
+      await this.whatsappService.sendFeeDueReminder(
         {
           phone:
             student.phone,
-
-          parentName:
-            student.parentName,
 
           studentName:
             student.studentName,
@@ -219,14 +216,14 @@ export class NotificationsService {
           studentId:
             student._id.toString(),
 
+          courseName:
+            student.course,
+
           pendingAmount:
             Number(
               student.pendingAmount ||
                 0,
             ),
-
-          dueDate:
-            student.feeEndingDate,
         },
       );
 

@@ -1,6 +1,7 @@
 import {
   IsDateString,
   IsEmail,
+  IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -23,6 +24,13 @@ export class CreateStudentDto {
   @IsDateString()
   @IsNotEmpty()
   dateOfBirth!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @IsIn(['male', 'female', 'others'], {
+    message: 'Gender must be Male, Female or Others',
+  })
+  gender!: 'male' | 'female' | 'others';
 
   @IsString()
   @IsNotEmpty()

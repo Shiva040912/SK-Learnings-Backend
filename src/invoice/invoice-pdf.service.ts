@@ -224,6 +224,33 @@ export class InvoicePdfService {
       invoice.fee ||
       ({} as any);
 
+    const monthlyInstallments =
+      Array.isArray(
+        fee.monthlyInstallments,
+      )
+        ? fee.monthlyInstallments
+        : [];
+
+    const paymentHistory =
+      Array.isArray(
+        fee.paymentHistory,
+      )
+        ? fee.paymentHistory
+        : [];
+
+    const currentPayableAmount =
+      Number(
+        fee.currentPayableAmount ??
+          invoice.invoiceAmount ??
+          0,
+      );
+
+    const currentInstallmentNumber =
+      Number(
+        fee.currentInstallmentNumber ||
+          0,
+      );
+
     const totalFee =
       Number(
         fee.totalFee ||
@@ -258,17 +285,13 @@ export class InvoicePdfService {
     const feePlanText =
       fee.feeType ===
       'monthly'
-        ? `Rs. ${this.formatMoney(
-            fee.monthlyAmount,
-          )} × ${
+        ? `${
             fee.selectedMonths ||
             '-'
-          } months`
+          } monthly installments`
         : fee.feeType ===
             'partial'
-          ? `Minimum Rs. ${this.formatMoney(
-              fee.minimumPartialAmount,
-            )}`
+          ? 'Flexible partial payments'
           : 'Full fee payment';
 
     const statusClass =
@@ -373,6 +396,165 @@ export class InvoicePdfService {
         `
         : '';
 
+    const monthlyScheduleHtml =
+      fee.feeType ===
+        'monthly' &&
+      monthlyInstallments.length >
+        0
+        ? `
+          <section class="installment-section">
+            <div class="section-title">
+              MONTHLY INSTALLMENT SCHEDULE
+            </div>
+
+            <div class="installment-table">
+              <div class="installment-head">
+                <span>Month</span>
+                <span>Amount</span>
+                <span>Status</span>
+                <span>Paid Date</span>
+              </div>
+
+              ${monthlyInstallments
+                .map(
+                  (
+                    installment:
+                      any,
+                  ) => `
+                    <div class="installment-row ${
+                      installment.status ===
+                      'paid'
+                        ? 'paid'
+                        : Number(
+                              installment.installmentNumber,
+                            ) ===
+                            currentInstallmentNumber
+                          ? 'current'
+                          : ''
+                    }">
+                      <span>
+                        Month ${this.escapeHtml(
+                          installment.installmentNumber,
+                        )}
+                      </span>
+
+                      <strong>
+                        Rs. ${this.formatMoney(
+                          installment.amount,
+                        )}
+                      </strong>
+
+                      <span class="installment-status ${
+                        installment.status ===
+                        'paid'
+                          ? 'paid'
+                          : 'unpaid'
+                      }">
+                        ${
+                          installment.status ===
+                          'paid'
+                            ? 'Paid'
+                            : 'Unpaid'
+                        }
+                      </span>
+
+                      <span>
+                        ${
+                          installment.paidAt
+                            ? this.formatDate(
+                                installment.paidAt,
+                              )
+                            : '-'
+                        }
+                      </span>
+                    </div>
+                  `,
+                )
+                .join('')}
+            </div>
+
+            <div class="current-payable-strip">
+              <span>
+                ${
+                  currentPayableAmount >
+                    0 &&
+                  currentInstallmentNumber >
+                    0
+                    ? `Current Payable • Month ${currentInstallmentNumber}`
+                    : 'Current Payable'
+                }
+              </span>
+
+              <strong>
+                Rs. ${this.formatMoney(
+                  currentPayableAmount,
+                )}
+              </strong>
+            </div>
+          </section>
+        `
+        : '';
+
+    const partialHistoryHtml =
+      fee.feeType ===
+        'partial' &&
+      paymentHistory.length >
+        0
+        ? `
+          <section class="installment-section">
+            <div class="section-title">
+              PARTIAL PAYMENT HISTORY
+            </div>
+
+            <div class="installment-table">
+              <div class="partial-history-head">
+                <span>Payment</span>
+                <span>Amount</span>
+                <span>Date</span>
+                <span>Method</span>
+              </div>
+
+              ${paymentHistory
+                .map(
+                  (
+                    item:
+                      any,
+                    index:
+                      number,
+                  ) => `
+                    <div class="partial-history-row">
+                      <span>
+                        Payment ${index + 1}
+                      </span>
+
+                      <strong>
+                        Rs. ${this.formatMoney(
+                          item.amount,
+                        )}
+                      </strong>
+
+                      <span>
+                        ${this.formatDate(
+                          item.paymentDate,
+                        )}
+                      </span>
+
+                      <span>
+                        ${this.escapeHtml(
+                          this.formatPaymentMethod(
+                            item.paymentMethod,
+                          ),
+                        )}
+                      </span>
+                    </div>
+                  `,
+                )
+                .join('')}
+            </div>
+          </section>
+        `
+        : '';
+
     const bottomSection =
       !isReceipt
         ? `
@@ -435,7 +617,8 @@ export class InvoicePdfService {
 
                 <strong>
                   Rs. ${this.formatMoney(
-                    pendingAmount,
+                    invoice.invoiceAmount ||
+                      currentPayableAmount,
                   )}
                 </strong>
               </div>
@@ -551,7 +734,8 @@ export class InvoicePdfService {
     html,
     body {
       width: 210mm;
-      height: 297mm;
+      min-height: 297mm;
+      height: auto;
       margin: 0;
       padding: 0;
       background: #ffffff;
@@ -562,12 +746,13 @@ export class InvoicePdfService {
     }
 
     body {
-      overflow: hidden;
+      overflow: visible;
     }
 
     .invoice-page {
       width: 210mm;
-      height: 297mm;
+      min-height: 297mm;
+      height: auto;
 
       display: flex;
       flex-direction: column;
@@ -576,7 +761,7 @@ export class InvoicePdfService {
 
       color: #26313c;
 
-      overflow: hidden;
+      overflow: visible;
     }
 
     .invoice-header {
@@ -1664,6 +1849,115 @@ export class InvoicePdfService {
       white-space:
         nowrap;
     }
+  
+    .installment-section {
+      padding: 1mm 10mm 4mm;
+      break-inside: avoid;
+    }
+
+    .installment-table {
+      overflow: hidden;
+      border: 1px solid #dfe4e8;
+      border-radius: 7px;
+      background: #ffffff;
+    }
+
+    .installment-head,
+    .installment-row,
+    .partial-history-head,
+    .partial-history-row {
+      display: grid;
+      grid-template-columns: 0.8fr 1fr 0.8fr 1fr;
+      align-items: center;
+    }
+
+    .installment-head,
+    .partial-history-head {
+      min-height: 9mm;
+      background: #f3f5f7;
+      border-bottom: 1px solid #dfe4e8;
+    }
+
+    .installment-head span,
+    .partial-history-head span {
+      padding: 0 3mm;
+      color: #6f7a84;
+      font-size: 6px;
+      font-weight: 900;
+      text-transform: uppercase;
+    }
+
+    .installment-row,
+    .partial-history-row {
+      min-height: 9mm;
+      border-bottom: 1px solid #edf0f2;
+    }
+
+    .installment-row:last-child,
+    .partial-history-row:last-child {
+      border-bottom: 0;
+    }
+
+    .installment-row > *,
+    .partial-history-row > * {
+      padding: 2mm 3mm;
+      color: #46515c;
+      font-size: 6.7px;
+    }
+
+    .installment-row.current {
+      background: #fff9e7;
+    }
+
+    .installment-row.paid {
+      background: #f5fbf7;
+    }
+
+    .installment-status {
+      display: inline-flex;
+      width: fit-content;
+      padding: 1.2mm 2.2mm;
+      border-radius: 4px;
+      font-weight: 900;
+    }
+
+    .installment-status.paid {
+      background: #eaf7ee;
+      color: #31844e;
+    }
+
+    .installment-status.unpaid {
+      background: #fff6dc;
+      color: #9d7000;
+    }
+
+    .current-payable-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4mm;
+      margin-top: 2.5mm;
+      padding: 3mm 4mm;
+      border: 1px solid #d9b442;
+      border-radius: 6px;
+      background: #ffb800;
+    }
+
+    .current-payable-strip span,
+    .current-payable-strip strong {
+      color: #171717;
+      font-weight: 900;
+    }
+
+    .current-payable-strip span {
+      font-size: 7px;
+      text-transform: uppercase;
+    }
+
+    .current-payable-strip strong {
+      font-size: 12px;
+    }
+
   </style>
 </head>
 
@@ -1990,6 +2284,10 @@ export class InvoicePdfService {
       </div>
 
       ${receiptPaymentMeta}
+
+      ${monthlyScheduleHtml}
+
+      ${partialHistoryHtml}
 
     </section>
 

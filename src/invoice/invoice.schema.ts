@@ -3,6 +3,7 @@ import {
   Schema,
   SchemaFactory,
 } from '@nestjs/mongoose';
+
 import {
   HydratedDocument,
   Types,
@@ -170,6 +171,83 @@ export const InvoiceBusinessSnapshotSchema =
 @Schema({
   _id: false,
 })
+export class InvoiceInstallmentSnapshot {
+  @Prop({
+    required: true,
+    min: 1,
+  })
+  installmentNumber!: number;
+
+  @Prop({
+    required: true,
+    min: 0,
+  })
+  amount!: number;
+
+  @Prop({
+    enum: ['unpaid', 'paid'],
+    default: 'unpaid',
+  })
+  status!: 'unpaid' | 'paid';
+
+  @Prop({
+    type: Date,
+    default: null,
+  })
+  paidAt?: Date;
+}
+
+export const InvoiceInstallmentSnapshotSchema =
+  SchemaFactory.createForClass(
+    InvoiceInstallmentSnapshot,
+  );
+
+@Schema({
+  _id: false,
+})
+export class InvoicePaymentHistorySnapshot {
+  @Prop({
+    required: true,
+    min: 0,
+  })
+  amount!: number;
+
+  @Prop({
+    type: Date,
+    required: true,
+  })
+  paymentDate!: Date;
+
+  @Prop({
+    enum: [
+      'cash',
+      'bank',
+      'upi',
+      'qr',
+    ],
+    required: true,
+  })
+  paymentMethod!:
+    | 'cash'
+    | 'bank'
+    | 'upi'
+    | 'qr';
+
+  @Prop({
+    default: null,
+    min: 1,
+  })
+  installmentNumber?: number;
+}
+
+export const InvoicePaymentHistorySnapshotSchema =
+  SchemaFactory.createForClass(
+    InvoicePaymentHistorySnapshot,
+  );
+
+@Schema({
+  _id: false,
+})
 export class InvoiceFeeSnapshot {
   @Prop({
     required: true,
@@ -201,6 +279,10 @@ export class InvoiceFeeSnapshot {
   })
   monthlyAmount!: number;
 
+  /*
+   * Kept only for old invoice compatibility.
+   * New Partial payment flow does not use a minimum amount rule.
+   */
   @Prop({
     default: 0,
     min: 0,
@@ -209,9 +291,45 @@ export class InvoiceFeeSnapshot {
 
   @Prop({
     type: Date,
-    required: true,
+    default: null,
   })
-  feeEndingDate!: Date;
+  feeStartingDate?: Date;
+
+  @Prop({
+    type: Date,
+    default: null,
+  })
+  feeEndingDate?: Date;
+
+  @Prop({
+    default: 0,
+    min: 0,
+  })
+  currentPayableAmount!: number;
+
+  @Prop({
+    default: null,
+    min: 1,
+  })
+  currentInstallmentNumber?: number;
+
+  @Prop({
+    type: [
+      InvoiceInstallmentSnapshotSchema,
+    ],
+    default: [],
+  })
+  monthlyInstallments!:
+    InvoiceInstallmentSnapshot[];
+
+  @Prop({
+    type: [
+      InvoicePaymentHistorySnapshotSchema,
+    ],
+    default: [],
+  })
+  paymentHistory!:
+    InvoicePaymentHistorySnapshot[];
 }
 
 export const InvoiceFeeSnapshotSchema =
@@ -348,7 +466,9 @@ export class Invoice {
 }
 
 export const InvoiceSchema =
-  SchemaFactory.createForClass(Invoice);
+  SchemaFactory.createForClass(
+    Invoice,
+  );
 
 @Schema({
   timestamps: true,

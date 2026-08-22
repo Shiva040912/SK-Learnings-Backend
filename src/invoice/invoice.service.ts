@@ -3,8 +3,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+
+import {
+  Model,
+  Types,
+} from 'mongoose';
+
 import { InvoicePdfService } from './invoice-pdf.service';
 
 import {
@@ -14,9 +20,15 @@ import {
   InvoiceDocument,
 } from './invoice.schema';
 
-import { Student, StudentDocument } from '../student/students.schema';
+import {
+  Student,
+  StudentDocument,
+} from '../student/students.schema';
 
-import { Payment, PaymentDocument } from '../payments/payments.schema';
+import {
+  Payment,
+  PaymentDocument,
+} from '../payments/payments.schema';
 
 import { SettingsService } from '../settings/settings.service';
 
@@ -24,286 +36,697 @@ import { SettingsService } from '../settings/settings.service';
 export class InvoiceService {
   constructor(
     @InjectModel(Invoice.name)
-    private readonly invoiceModel: Model<InvoiceDocument>,
+    private readonly invoiceModel:
+      Model<InvoiceDocument>,
 
     @InjectModel(InvoiceCounter.name)
-    private readonly invoiceCounterModel: Model<InvoiceCounterDocument>,
+    private readonly invoiceCounterModel:
+      Model<InvoiceCounterDocument>,
 
     @InjectModel(Student.name)
-    private readonly studentModel: Model<StudentDocument>,
+    private readonly studentModel:
+      Model<StudentDocument>,
 
     @InjectModel(Payment.name)
-    private readonly paymentModel: Model<PaymentDocument>,
+    private readonly paymentModel:
+      Model<PaymentDocument>,
 
-    private readonly settingsService: SettingsService,
+    private readonly settingsService:
+      SettingsService,
 
-    private readonly invoicePdfService:InvoicePdfService,
+    private readonly invoicePdfService:
+      InvoicePdfService,
   ) {}
 
-  private roundMoney(value: number) {
-    return Number(Number(value || 0).toFixed(2));
+  private roundMoney(
+    value: number,
+  ) {
+    return Number(
+      Number(
+        value || 0,
+      ).toFixed(2),
+    );
   }
 
-  private async getNextInvoiceNumber(prefix: string, suffix: string) {
-    const counter = await this.invoiceCounterModel.findOneAndUpdate(
-      {
-        name: 'invoice',
-      },
-      {
-        $inc: {
-          sequence: 1,
+  private async getNextInvoiceNumber(
+    prefix: string,
+    suffix: string,
+  ) {
+    const counter =
+      await this.invoiceCounterModel.findOneAndUpdate(
+        {
+          name:
+            'invoice',
         },
-      },
-      {
-        returnDocument: 'after',
-        upsert: true,
-        setDefaultsOnInsert: true,
-      },
-    );
+        {
+          $inc: {
+            sequence:
+              1,
+          },
+        },
+        {
+          returnDocument:
+            'after',
+          upsert:
+            true,
+          setDefaultsOnInsert:
+            true,
+        },
+      );
 
-    const sequence = String(counter.sequence).padStart(4, '0');
+    const sequence =
+      String(
+        counter.sequence,
+      ).padStart(
+        4,
+        '0',
+      );
 
-    const cleanPrefix = String(prefix || 'SK-INV').trim();
+    const cleanPrefix =
+      String(
+        prefix ||
+          'SK-INV',
+      ).trim();
 
-    const cleanSuffix = String(suffix || '').trim();
+    const cleanSuffix =
+      String(
+        suffix ||
+          '',
+      ).trim();
 
     return cleanSuffix
       ? `${cleanPrefix}-${sequence}-${cleanSuffix}`
       : `${cleanPrefix}-${sequence}`;
   }
 
-  private buildStudentSnapshot(student: StudentDocument) {
+  private buildStudentSnapshot(
+    student:
+      StudentDocument,
+  ) {
     return {
-      studentName: student.studentName,
+      studentName:
+        student.studentName,
 
-      rollNo: student.rollNo,
+      rollNo:
+        student.rollNo,
 
-      course: student.course,
+      course:
+        student.course,
 
-      batch: student.batch || '',
+      batch:
+        student.batch ||
+        '',
 
-      parentName: student.parentName,
+      parentName:
+        student.parentName,
 
-      phone: student.phone,
+      phone:
+        student.phone,
 
-      alternatePhone: student.alternatePhone || '',
+      alternatePhone:
+        student.alternatePhone ||
+        '',
 
-      email: student.email || '',
+      email:
+        student.email ||
+        '',
 
-      idproof: student.idproof || '',
+      idproof:
+        student.idproof ||
+        '',
 
-      schoolName: student.schoolName || '',
+      schoolName:
+        student.schoolName ||
+        '',
 
-      address: student.address || '',
+      address:
+        student.address ||
+        '',
     };
   }
 
-  private buildBusinessSnapshot(settings: any) {
+  private buildBusinessSnapshot(
+    settings: any,
+  ) {
     return {
-      businessName: 'THE SK LEARNINGS',
+      businessName:
+        'THE SK LEARNINGS',
 
-      tagline: 'Private Educational Services',
+      tagline:
+        'Private Educational Services',
 
-      motto: 'MEDICAL / ENGINEERING / FOUNDATIONS / JUNIOR IAS',
+      motto:
+        'MEDICAL / ENGINEERING / FOUNDATIONS / JUNIOR IAS',
 
-      ownerName: settings.ownerName || '',
+      ownerName:
+        settings.ownerName ||
+        '',
 
-      gstNumber: settings.gstNumber || '',
+      gstNumber:
+        settings.gstNumber ||
+        '',
 
-      address: settings.invoiceAddress || '',
+      address:
+        settings.invoiceAddress ||
+        '',
 
-      invoicePrefix: settings.invoicePrefix || 'SK-INV',
+      invoicePrefix:
+        settings.invoicePrefix ||
+        'SK-INV',
 
-      invoiceSuffix: settings.invoiceSuffix || '',
+      invoiceSuffix:
+        settings.invoiceSuffix ||
+        '',
 
-      qrCode: settings.invoiceQrCode || '',
+      qrCode:
+        settings.invoiceQrCode ||
+        '',
 
-      invoiceFooter: settings.invoiceFooter || '',
+      invoiceFooter:
+        settings.invoiceFooter ||
+        '',
 
-      invoiceTerms: settings.invoiceTerms || '',
+      invoiceTerms:
+        settings.invoiceTerms ||
+        '',
     };
   }
 
-  async createFeeSetupInvoice(studentId: string) {
-    const settings = await this.settingsService.getInvoiceSettings();
+  private buildMonthlyInstallmentSnapshot(
+    student:
+      StudentDocument,
+  ) {
+    if (
+      student.feeType !==
+        'monthly' ||
+      !Array.isArray(
+        student.monthlyInstallments,
+      )
+    ) {
+      return [];
+    }
 
-    if (!settings.invoiceEnabled) {
+    return student.monthlyInstallments.map(
+      (
+        installment,
+      ) => ({
+        installmentNumber:
+          Number(
+            installment.installmentNumber ||
+              0,
+          ),
+
+        amount:
+          this.roundMoney(
+            Number(
+              installment.amount ||
+                0,
+            ),
+          ),
+
+        status:
+          installment.status ===
+          'paid'
+            ? 'paid'
+            : 'unpaid',
+
+        paidAt:
+          installment.paidAt ||
+          undefined,
+      }),
+    );
+  }
+
+  private buildPaymentHistorySnapshot(
+    payments:
+      PaymentDocument[],
+  ) {
+    return payments.map(
+      (
+        payment,
+      ) => ({
+        amount:
+          this.roundMoney(
+            Number(
+              payment.amount ||
+                0,
+            ),
+          ),
+
+        paymentDate:
+          payment.paymentDate ||
+          new Date(),
+
+        paymentMethod:
+          payment.paymentMethod,
+
+        installmentNumber:
+          payment.installmentNumber ||
+          undefined,
+      }),
+    );
+  }
+
+  private getCurrentPayable(
+    student:
+      StudentDocument,
+  ) {
+    const pendingAmount =
+      this.roundMoney(
+        Number(
+          student.pendingAmount ||
+            0,
+        ),
+      );
+
+    if (
+      pendingAmount <= 0
+    ) {
+      return {
+        amount:
+          0,
+
+        installmentNumber:
+          undefined as
+            | number
+            | undefined,
+      };
+    }
+
+    if (
+      student.feeType ===
+      'monthly'
+    ) {
+      const currentInstallment =
+        (
+          student.monthlyInstallments ||
+          []
+        ).find(
+          (
+            installment,
+          ) =>
+            installment.status !==
+            'paid',
+        );
+
+      if (
+        currentInstallment
+      ) {
+        return {
+          amount:
+            this.roundMoney(
+              Number(
+                currentInstallment.amount ||
+                  0,
+              ),
+            ),
+
+          installmentNumber:
+            Number(
+              currentInstallment.installmentNumber,
+            ),
+        };
+      }
+    }
+
+    return {
+      amount:
+        pendingAmount,
+
+      installmentNumber:
+        undefined,
+    };
+  }
+
+  private async getStudentPayments(
+    studentId:
+      Types.ObjectId,
+  ) {
+    return this.paymentModel
+      .find({
+        studentId,
+      })
+      .sort({
+        paymentDate:
+          1,
+
+        createdAt:
+          1,
+      });
+  }
+
+  private buildFeeSnapshot(
+    student:
+      StudentDocument,
+
+    payments:
+      PaymentDocument[],
+  ) {
+    const currentPayable =
+      this.getCurrentPayable(
+        student,
+      );
+
+    return {
+      totalFee:
+        this.roundMoney(
+          student.totalFee,
+        ),
+
+      feeType:
+        student.feeType,
+
+      selectedMonths:
+        student.selectedMonths ||
+        null,
+
+      monthlyAmount:
+        this.roundMoney(
+          student.monthlyAmount,
+        ),
+
+      /*
+       * New Partial flow has no minimum payment rule.
+       * This remains 0 for new invoices.
+       */
+      minimumPartialAmount:
+        0,
+
+      feeStartingDate:
+        student.feeStartingDate ||
+        null,
+
+      feeEndingDate:
+        student.feeEndingDate ||
+        null,
+
+      currentPayableAmount:
+        currentPayable.amount,
+
+      currentInstallmentNumber:
+        currentPayable.installmentNumber ||
+        null,
+
+      monthlyInstallments:
+        this.buildMonthlyInstallmentSnapshot(
+          student,
+        ),
+
+      paymentHistory:
+        this.buildPaymentHistorySnapshot(
+          payments,
+        ),
+    };
+  }
+
+  async createFeeSetupInvoice(
+    studentId:
+      string,
+  ) {
+    const settings =
+      await this.settingsService.getInvoiceSettings();
+
+    if (
+      !settings.invoiceEnabled
+    ) {
       return null;
     }
 
-    if (!settings.invoiceQrCode) {
+    if (
+      !settings.invoiceQrCode
+    ) {
       throw new BadRequestException(
         'Upload payment QR in Invoice Settings before generating fee invoice',
       );
     }
 
-    const student = await this.studentModel.findById(studentId);
+    const student =
+      await this.studentModel.findById(
+        studentId,
+      );
 
-    if (!student) {
-      throw new NotFoundException('Student not found');
+    if (
+      !student
+    ) {
+      throw new NotFoundException(
+        'Student not found',
+      );
     }
 
     if (
       !student.feeSetupCompleted ||
-      !student.feeType ||
-      !student.feeEndingDate
+      !student.feeType
     ) {
-      throw new BadRequestException('Student fee setup is not completed');
+      throw new BadRequestException(
+        'Student fee setup is not completed',
+      );
     }
 
-    const existingInvoice = await this.invoiceModel.findOne({
-      studentId: student._id,
+    const existingInvoice =
+      await this.invoiceModel.findOne({
+        studentId:
+          student._id,
 
-      invoiceType: 'fee_setup',
+        invoiceType:
+          'fee_setup',
 
-      isActive: true,
-    });
+        isActive:
+          true,
+      });
 
-    if (existingInvoice) {
-      existingInvoice.isActive = false;
+    if (
+      existingInvoice
+    ) {
+      existingInvoice.isActive =
+        false;
 
       await existingInvoice.save();
     }
 
-    const feeSettings = await this.settingsService.getFeeSettings();
+    const payments =
+      await this.getStudentPayments(
+        student._id,
+      );
 
-    const invoiceNumber = await this.getNextInvoiceNumber(
-      settings.invoicePrefix,
-      settings.invoiceSuffix,
-    );
+    const feeSnapshot =
+      this.buildFeeSnapshot(
+        student,
+        payments,
+      );
 
-    const invoice = new this.invoiceModel({
-      invoiceNumber,
+    const invoiceNumber =
+      await this.getNextInvoiceNumber(
+        settings.invoicePrefix,
+        settings.invoiceSuffix,
+      );
 
-      invoiceType: 'fee_setup',
+    /*
+     * Monthly setup invoice asks only for the CURRENT installment.
+     * Partial / Yearly setup keep the current full pending amount.
+     */
+    const invoiceAmount =
+      student.feeType ===
+      'monthly'
+        ? this.roundMoney(
+            feeSnapshot.currentPayableAmount,
+          )
+        : this.roundMoney(
+            student.pendingAmount ||
+              student.totalFee,
+          );
 
-      studentId: student._id,
+    const invoice =
+      new this.invoiceModel({
+        invoiceNumber,
 
-      student: this.buildStudentSnapshot(student),
+        invoiceType:
+          'fee_setup',
 
-      business: this.buildBusinessSnapshot(settings),
+        studentId:
+          student._id,
 
-      fee: {
-        totalFee: this.roundMoney(student.totalFee),
+        student:
+          this.buildStudentSnapshot(
+            student,
+          ),
 
-        feeType: student.feeType,
+        business:
+          this.buildBusinessSnapshot(
+            settings,
+          ),
 
-        selectedMonths: student.selectedMonths || null,
+        fee:
+          feeSnapshot,
 
-        monthlyAmount: this.roundMoney(student.monthlyAmount),
+        invoiceAmount,
 
-        minimumPartialAmount:
-          student.feeType === 'partial'
-            ? this.roundMoney(feeSettings.minimumPartialAmount)
-            : 0,
+        paidAmount:
+          this.roundMoney(
+            student.paidAmount,
+          ),
 
-        feeEndingDate: student.feeEndingDate,
-      },
+        pendingAmount:
+          this.roundMoney(
+            student.pendingAmount,
+          ),
 
-      invoiceAmount: this.roundMoney(student.totalFee),
+        paymentStatus:
+          student.paymentStatus,
 
-      paidAmount: this.roundMoney(student.paidAmount),
+        paymentMethod:
+          student.paymentMethod,
 
-      pendingAmount: this.roundMoney(student.pendingAmount),
+        invoiceDate:
+          new Date(),
 
-      paymentStatus: student.paymentStatus,
+        dueDate:
+          student.feeEndingDate ||
+          null,
 
-      paymentMethod: student.paymentMethod,
-
-      invoiceDate: new Date(),
-
-      dueDate: student.feeEndingDate,
-
-      isActive: true,
-    });
+        isActive:
+          true,
+      });
 
     return invoice.save();
   }
 
-  async createPaymentReceiptInvoice(studentId: string, paymentId: string) {
-    const settings = await this.settingsService.getInvoiceSettings();
+  async createPaymentReceiptInvoice(
+    studentId:
+      string,
 
-    if (!settings.invoiceEnabled) {
+    paymentId:
+      string,
+  ) {
+    const settings =
+      await this.settingsService.getInvoiceSettings();
+
+    if (
+      !settings.invoiceEnabled
+    ) {
       return null;
     }
 
-    const student = await this.studentModel.findById(studentId);
+    const student =
+      await this.studentModel.findById(
+        studentId,
+      );
 
-    if (!student) {
-      throw new NotFoundException('Student not found');
+    if (
+      !student
+    ) {
+      throw new NotFoundException(
+        'Student not found',
+      );
     }
 
-    const payment = await this.paymentModel.findById(paymentId);
+    const payment =
+      await this.paymentModel.findById(
+        paymentId,
+      );
 
-    if (!payment) {
-      throw new NotFoundException('Payment record not found');
+    if (
+      !payment
+    ) {
+      throw new NotFoundException(
+        'Payment record not found',
+      );
     }
 
-    const existingReceipt = await this.invoiceModel.findOne({
-      paymentId: payment._id,
+    const existingReceipt =
+      await this.invoiceModel.findOne({
+        paymentId:
+          payment._id,
 
-      invoiceType: 'payment_receipt',
-    });
+        invoiceType:
+          'payment_receipt',
+      });
 
-    if (existingReceipt) {
+    if (
+      existingReceipt
+    ) {
       return existingReceipt;
     }
 
-    const feeSettings = await this.settingsService.getFeeSettings();
+    const payments =
+      await this.getStudentPayments(
+        student._id,
+      );
 
-    const invoiceNumber = await this.getNextInvoiceNumber(
-      settings.invoicePrefix,
-      settings.invoiceSuffix,
-    );
+    const feeSnapshot =
+      this.buildFeeSnapshot(
+        student,
+        payments,
+      );
 
-    const invoice = new this.invoiceModel({
-      invoiceNumber,
+    const invoiceNumber =
+      await this.getNextInvoiceNumber(
+        settings.invoicePrefix,
+        settings.invoiceSuffix,
+      );
 
-      invoiceType: 'payment_receipt',
+    const invoice =
+      new this.invoiceModel({
+        invoiceNumber,
 
-      studentId: student._id,
+        invoiceType:
+          'payment_receipt',
 
-      paymentId: payment._id,
+        studentId:
+          student._id,
 
-      student: this.buildStudentSnapshot(student),
+        paymentId:
+          payment._id,
 
-      business: this.buildBusinessSnapshot(settings),
+        student:
+          this.buildStudentSnapshot(
+            student,
+          ),
 
-      fee: {
-        totalFee: this.roundMoney(student.totalFee),
+        business:
+          this.buildBusinessSnapshot(
+            settings,
+          ),
 
-        feeType: student.feeType,
+        fee:
+          feeSnapshot,
 
-        selectedMonths: student.selectedMonths || null,
+        /*
+         * Receipt amount is ALWAYS the actual transaction amount.
+         */
+        invoiceAmount:
+          this.roundMoney(
+            payment.amount,
+          ),
 
-        monthlyAmount: this.roundMoney(student.monthlyAmount),
+        paidAmount:
+          this.roundMoney(
+            student.paidAmount,
+          ),
 
-        minimumPartialAmount:
-          student.feeType === 'partial'
-            ? this.roundMoney(feeSettings.minimumPartialAmount)
-            : 0,
+        pendingAmount:
+          this.roundMoney(
+            student.pendingAmount,
+          ),
 
-        feeEndingDate: student.feeEndingDate || new Date(),
-      },
+        paymentStatus:
+          student.paymentStatus,
 
-      invoiceAmount: this.roundMoney(payment.amount),
+        paymentMethod:
+          payment.paymentMethod,
 
-      paidAmount: this.roundMoney(student.paidAmount),
+        paymentDate:
+          payment.paymentDate,
 
-      pendingAmount: this.roundMoney(student.pendingAmount),
+        invoiceDate:
+          new Date(),
 
-      paymentStatus: student.paymentStatus,
+        dueDate:
+          student.feeEndingDate ||
+          null,
 
-      paymentMethod: payment.paymentMethod,
-
-      paymentDate: payment.paymentDate,
-
-      invoiceDate: new Date(),
-
-      dueDate: student.feeEndingDate || null,
-
-      isActive: true,
-    });
+        isActive:
+          true,
+      });
 
     return invoice.save();
   }
@@ -311,104 +734,163 @@ export class InvoiceService {
   async getInvoices() {
     return this.invoiceModel
       .find({
-        isActive: true,
+        isActive:
+          true,
       })
       .sort({
-        invoiceDate: -1,
+        invoiceDate:
+          -1,
       });
   }
 
-  async getInvoiceById(id: string) {
-    if (!Types.ObjectId.isValid(id)) {
-      throw new BadRequestException('Invalid invoice ID');
+  async getInvoiceById(
+    id:
+      string,
+  ) {
+    if (
+      !Types.ObjectId.isValid(
+        id,
+      )
+    ) {
+      throw new BadRequestException(
+        'Invalid invoice ID',
+      );
     }
 
-    const invoice = await this.invoiceModel.findById(id);
+    const invoice =
+      await this.invoiceModel.findById(
+        id,
+      );
 
-    if (!invoice) {
-      throw new NotFoundException('Invoice not found');
+    if (
+      !invoice
+    ) {
+      throw new NotFoundException(
+        'Invoice not found',
+      );
     }
 
     return invoice;
   }
 
-  async getStudentInvoices(studentId: string) {
-    if (!Types.ObjectId.isValid(studentId)) {
-      throw new BadRequestException('Invalid student ID');
+  async getStudentInvoices(
+    studentId:
+      string,
+  ) {
+    if (
+      !Types.ObjectId.isValid(
+        studentId,
+      )
+    ) {
+      throw new BadRequestException(
+        'Invalid student ID',
+      );
     }
 
     return this.invoiceModel
       .find({
         studentId,
-        isActive: true,
+
+        isActive:
+          true,
       })
       .sort({
-        invoiceDate: -1,
+        invoiceDate:
+          -1,
       });
   }
 
-  async getInvoiceByNumber(invoiceNumber: string) {
-    const invoice = await this.invoiceModel.findOne({
-      invoiceNumber,
-    });
+  async getInvoiceByNumber(
+    invoiceNumber:
+      string,
+  ) {
+    const invoice =
+      await this.invoiceModel.findOne({
+        invoiceNumber,
+      });
 
-    if (!invoice) {
-      throw new NotFoundException('Invoice not found');
+    if (
+      !invoice
+    ) {
+      throw new NotFoundException(
+        'Invoice not found',
+      );
     }
 
     return invoice;
   }
 
-  async deactivateStudentInvoices(studentId: string) {
-    if (!Types.ObjectId.isValid(studentId)) {
-      throw new BadRequestException('Invalid student ID');
+  async deactivateStudentInvoices(
+    studentId:
+      string,
+  ) {
+    if (
+      !Types.ObjectId.isValid(
+        studentId,
+      )
+    ) {
+      throw new BadRequestException(
+        'Invalid student ID',
+      );
     }
 
     await this.invoiceModel.updateMany(
       {
         studentId,
-        isActive: true,
+
+        isActive:
+          true,
       },
       {
         $set: {
-          isActive: false,
+          isActive:
+            false,
         },
       },
     );
 
     return {
-      message: 'Student invoices deactivated successfully',
+      message:
+        'Student invoices deactivated successfully',
     };
   }
 
   async clearAllInvoices() {
-    const result = await this.invoiceModel.deleteMany({});
+    const result =
+      await this.invoiceModel.deleteMany(
+        {},
+      );
 
     return {
-      message: 'All invoice records cleared successfully',
-      deletedCount: result.deletedCount || 0,
+      message:
+        'All invoice records cleared successfully',
+
+      deletedCount:
+        result.deletedCount ||
+        0,
     };
   }
 
   async generateInvoicePdf(
-  invoiceId: string,
-) {
-  const invoice =
-    await this.getInvoiceById(
-      invoiceId,
+    invoiceId:
+      string,
+  ) {
+    const invoice =
+      await this.getInvoiceById(
+        invoiceId,
+      );
+
+    return this.invoicePdfService.generatePdfBuffer(
+      invoice,
     );
+  }
 
-  return this.invoicePdfService.generatePdfBuffer(
-    invoice,
-  );
-}
-
-async generateInvoicePdfByDocument(
-  invoice:
-    InvoiceDocument,
-) {
-  return this.invoicePdfService.generatePdfBuffer(
-    invoice,
-  );
-}
+  async generateInvoicePdfByDocument(
+    invoice:
+      InvoiceDocument,
+  ) {
+    return this.invoicePdfService.generatePdfBuffer(
+      invoice,
+    );
+  }
 }

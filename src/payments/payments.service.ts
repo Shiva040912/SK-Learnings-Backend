@@ -37,7 +37,9 @@ type FeeSetupData = {
     | 'partial'
     | 'yearly';
 
-  feeEndingDate: string;
+  feeStartingDate?: string;
+
+  feeEndingDate?: string;
 
   selectedMonths?: number;
 };
@@ -94,8 +96,431 @@ export class PaymentsService {
     );
   }
 
+  private getTodayStart() {
+    const today =
+      new Date();
+
+    today.setHours(
+      0,
+      0,
+      0,
+      0,
+    );
+
+    return today;
+  }
+
+  private parseFeeDate(
+    value: string,
+    label: string,
+  ) {
+    const parsed =
+      new Date(
+        `${value}T00:00:00`,
+      );
+
+    if (
+      Number.isNaN(
+        parsed.getTime(),
+      )
+    ) {
+      throw new BadRequestException(
+        `Invalid ${label}`,
+      );
+    }
+
+    return parsed;
+  }
+
+
+  private getMonthDayDate(
+    year: number,
+    monthIndex: number,
+    day: number,
+  ) {
+    const lastDay =
+      new Date(
+        year,
+        monthIndex + 1,
+        0,
+      ).getDate();
+
+    return new Date(
+      year,
+      monthIndex,
+      Math.min(
+        Math.max(
+          Number(day) || 1,
+          1,
+        ),
+        lastDay,
+      ),
+      0,
+      0,
+      0,
+      0,
+    );
+  }
+
+  private getRecurringFeeCycleDates(
+    startDay: number,
+    dueDay: number,
+    referenceDate =
+      new Date(),
+  ) {
+    const reference =
+      new Date(
+        referenceDate,
+      );
+
+    reference.setHours(
+      0,
+      0,
+      0,
+      0,
+    );
+
+    const year =
+      reference.getFullYear();
+
+    const month =
+      reference.getMonth();
+
+    const currentStart =
+      this.getMonthDayDate(
+        year,
+        month,
+        startDay,
+      );
+
+    let currentDue:
+      Date;
+
+    if (
+      Number(dueDay) >=
+      Number(startDay)
+    ) {
+      currentDue =
+        this.getMonthDayDate(
+          year,
+          month,
+          dueDay,
+        );
+    } else {
+      currentDue =
+        this.getMonthDayDate(
+          year,
+          month + 1,
+          dueDay,
+        );
+    }
+
+    /*
+     * If today's date is already after this cycle's due date,
+     * move to the next recurring cycle.
+     */
+    if (
+      reference >
+      currentDue
+    ) {
+      const nextStart =
+        this.getMonthDayDate(
+          year,
+          month + 1,
+          startDay,
+        );
+
+      const nextDue =
+        Number(dueDay) >=
+        Number(startDay)
+          ? this.getMonthDayDate(
+              year,
+              month + 1,
+              dueDay,
+            )
+          : this.getMonthDayDate(
+              year,
+              month + 2,
+              dueDay,
+            );
+
+      return {
+        feeStartingDate:
+          nextStart,
+
+        feeEndingDate:
+          nextDue,
+      };
+    }
+
+    /*
+     * If we are before this month's configured start day,
+     * the upcoming current-month cycle is used.
+     * If we are inside the cycle, the same cycle is used.
+     */
+    return {
+      feeStartingDate:
+        currentStart,
+
+      feeEndingDate:
+        currentDue,
+    };
+  }
+
+  private buildMonthlyInstallments(
+    totalFee: number,
+    selectedMonths: number,
+  ) {
+    if (
+      !Number.isInteger(
+        selectedMonths,
+      ) ||
+      selectedMonths < 1
+    ) {
+      throw new BadRequestException(
+        'Selected months must be a positive whole number',
+      );
+    }
+
+    /*
+     * Monthly installments must be whole rupee values.
+     * Any division remainder is added to the FINAL installment.
+     *
+     * Example:
+     * ₹40,000 / 14
+     * Month 1-13 = ₹2,857
+     * Month 14   = ₹2,859
+     * Total      = ₹40,000 exactly.
+     */
+    const normalizedTotalFee =
+      Number(totalFee);
+
+    if (
+      !Number.isFinite(
+        normalizedTotalFee,
+      ) ||
+      normalizedTotalFee <= 0
+    ) {
+      throw new BadRequestException(
+        'Total fee must be greater than 0',
+      );
+    }
+
+    if (
+      !Number.isInteger(
+        normalizedTotalFee,
+      )
+    ) {
+      throw new BadRequestException(
+        'Monthly total fee must be a whole rupee amount without decimals',
+      );
+    }
+
+    if (
+      normalizedTotalFee <
+      selectedMonths
+    ) {
+      throw new BadRequestException(
+        'Monthly duration is too high for the configured total fee',
+      );
+    }
+
+    const baseAmount =
+      Math.floor(
+        normalizedTotalFee /
+          selectedMonths,
+      );
+
+    const finalAmount =
+      normalizedTotalFee -
+      baseAmount *
+        (selectedMonths - 1);
+
+    return Array.from(
+      {
+        length:
+          selectedMonths,
+      },
+      (_, index) => ({
+        installmentNumber:
+          index + 1,
+
+        amount:
+          index ===
+          selectedMonths - 1
+            ? finalAmount
+            : baseAmount,
+
+        status:
+          'unpaid' as
+            | 'unpaid'
+            | 'paid',
+
+        paidAt:
+          undefined,
+
+        paymentId:
+          undefined,
+      }),
+    );
+  }
+
+  private ensureMonthlyInstallments(
+    student: StudentDocument,
+  ) {
+    if (
+      student.feeType !==
+      'monthly'
+    ) {
+      return;
+    }
+
+    const selectedMonths =
+      Number(
+        student.selectedMonths ||
+          0,
+      );
+
+    if (
+      !Number.isInteger(
+        selectedMonths,
+      ) ||
+      selectedMonths < 1
+    ) {
+      throw new BadRequestException(
+        'Monthly duration is not configured',
+      );
+    }
+
+    if (
+      Array.isArray(
+        student.monthlyInstallments,
+      ) &&
+      student.monthlyInstallments.length ===
+        selectedMonths
+    ) {
+      return;
+    }
+
+    const installments =
+      this.buildMonthlyInstallments(
+        Number(
+          student.totalFee ||
+            0,
+        ),
+        selectedMonths,
+      );
+
+    /*
+     * Backward compatibility for students created
+     * before installment schedules existed.
+     */
+    const oldPaidMonths =
+      Math.min(
+        Number(
+          student.paidMonths ||
+            0,
+        ),
+        selectedMonths,
+      );
+
+    for (
+      let index = 0;
+      index < oldPaidMonths;
+      index += 1
+    ) {
+      installments[index].status =
+        'paid';
+    }
+
+    student.monthlyInstallments =
+      installments;
+  }
+
+  private recalculateMonthlyStudent(
+    student: StudentDocument,
+  ) {
+    const installments =
+      Array.isArray(
+        student.monthlyInstallments,
+      )
+        ? student.monthlyInstallments
+        : [];
+
+    const paidInstallments =
+      installments.filter(
+        (installment) =>
+          installment.status ===
+          'paid',
+      );
+
+    const paidAmount =
+      this.roundMoney(
+        paidInstallments.reduce(
+          (
+            total,
+            installment,
+          ) =>
+            total +
+            Number(
+              installment.amount ||
+                0,
+            ),
+          0,
+        ),
+      );
+
+    const totalFee =
+      this.roundMoney(
+        Number(
+          student.totalFee ||
+            0,
+        ),
+      );
+
+    const pendingAmount =
+      this.roundMoney(
+        Math.max(
+          0,
+          totalFee -
+            paidAmount,
+        ),
+      );
+
+    student.paidMonths =
+      paidInstallments.length;
+
+    student.paidAmount =
+      Math.min(
+        paidAmount,
+        totalFee,
+      );
+
+    student.pendingAmount =
+      pendingAmount;
+
+    if (
+      paidInstallments.length ===
+      0
+    ) {
+      student.paymentStatus =
+        'unpaid';
+    } else if (
+      paidInstallments.length ===
+        installments.length &&
+      pendingAmount <= 0
+    ) {
+      student.paymentStatus =
+        'paid';
+    } else {
+      student.paymentStatus =
+        'partial';
+    }
+  }
+
   private validateBulkStudent(
     student: StudentDocument,
+    mode: 'common' | 'course',
   ) {
     const paidAmount =
       Number(
@@ -103,15 +528,54 @@ export class PaymentsService {
       );
 
     /*
-     * Bulk setup must not reset an
-     * already started payment.
+     * Monthly / Partial plans must NEVER be overwritten by
+     * Common or Course Wise fee setup.
      */
+    if (
+      student.feeSetupCompleted &&
+      (
+        student.feeType ===
+          'monthly' ||
+        student.feeType ===
+          'partial'
+      )
+    ) {
+      return {
+        allowed: false,
+
+        reason:
+          `${student.feeType === 'monthly' ? 'Monthly' : 'Partial'} fee plan is already active`,
+      };
+    }
+
     if (paidAmount > 0) {
       return {
         allowed: false,
 
         reason:
           'Payment already started for this student',
+      };
+    }
+
+    /*
+     * Common fee must not overwrite a student whose fee was
+     * already generated through Course Wise setup.
+     *
+     * Course Wise setup IS allowed to replace an earlier
+     * Common yearly setup for students of that selected course,
+     * provided payment has not started.
+     */
+    if (
+      mode === 'common' &&
+      student.feeSetupCompleted &&
+      student.feeSetupSource ===
+        'course'
+    ) {
+      return {
+        allowed: false,
+
+        reason:
+          'Course wise fee is already configured for this student',
       };
     }
 
@@ -485,6 +949,11 @@ export class PaymentsService {
   async setupStudentFee(
     studentId: string,
     data: FeeSetupData,
+    setupSource:
+      | 'individual'
+      | 'common'
+      | 'course' =
+      'individual',
   ) {
     const student =
       await this.studentModel.findById(
@@ -501,8 +970,10 @@ export class PaymentsService {
       await this.settingsService.getFeeSettings();
 
     const totalFee =
-      Number(
-        data.totalFee,
+      this.roundMoney(
+        Number(
+          data.totalFee,
+        ),
       );
 
     if (
@@ -516,19 +987,94 @@ export class PaymentsService {
       );
     }
 
-    const feeEndingDate =
-      new Date(
-        `${data.feeEndingDate}T00:00:00`,
-      );
+    const today =
+      this.getTodayStart();
+
+    let feeStartingDate:
+      Date;
+
+    let feeEndingDate:
+      Date;
 
     if (
-      Number.isNaN(
-        feeEndingDate.getTime(),
-      )
+      data.feeType ===
+        'monthly' ||
+      data.feeType ===
+        'partial'
     ) {
-      throw new BadRequestException(
-        'Invalid fee ending date',
-      );
+      const recurringCycle =
+        this.getRecurringFeeCycleDates(
+          Number(
+            feeSettings.recurringFeeStartDay ||
+              1,
+          ),
+          Number(
+            feeSettings.recurringFeeDueDay ||
+              10,
+          ),
+          today,
+        );
+
+      feeStartingDate =
+        recurringCycle.feeStartingDate;
+
+      feeEndingDate =
+        recurringCycle.feeEndingDate;
+    } else {
+      if (
+        !data.feeStartingDate
+      ) {
+        throw new BadRequestException(
+          'Fee starting date is required for yearly fee setup',
+        );
+      }
+
+      if (
+        !data.feeEndingDate
+      ) {
+        throw new BadRequestException(
+          'Fee ending date is required for yearly fee setup',
+        );
+      }
+
+      feeStartingDate =
+        this.parseFeeDate(
+          data.feeStartingDate,
+          'fee starting date',
+        );
+
+      feeEndingDate =
+        this.parseFeeDate(
+          data.feeEndingDate,
+          'fee ending date',
+        );
+
+      if (
+        feeStartingDate <
+        today
+      ) {
+        throw new BadRequestException(
+          'Fee starting date cannot be in the past',
+        );
+      }
+
+      if (
+        feeEndingDate <
+        today
+      ) {
+        throw new BadRequestException(
+          'Fee ending date cannot be in the past',
+        );
+      }
+
+      if (
+        feeEndingDate <
+        feeStartingDate
+      ) {
+        throw new BadRequestException(
+          'Fee ending date cannot be before fee starting date',
+        );
+      }
     }
 
     if (
@@ -565,7 +1111,8 @@ export class PaymentsService {
       | number
       | undefined;
 
-    let monthlyAmount = 0;
+    let monthlyAmount =
+      0;
 
     if (
       data.feeType ===
@@ -577,51 +1124,49 @@ export class PaymentsService {
             feeSettings.defaultMonths,
         );
 
-      const minimumMonths =
-        Number(
-          feeSettings.minimumMonths,
-        );
-
-      const maximumMonths =
-        Number(
-          feeSettings.maximumMonths,
-        );
-
       if (
         !Number.isInteger(
           selectedMonths,
-        )
+        ) ||
+        selectedMonths <
+          1
       ) {
         throw new BadRequestException(
-          'Selected months must be a whole number',
+          'Selected months must be a positive whole number',
         );
       }
 
-      if (
-        selectedMonths <
-          minimumMonths ||
-        selectedMonths >
-          maximumMonths
-      ) {
-        throw new BadRequestException(
-          `Monthly duration must be between ${minimumMonths} and ${maximumMonths} months`,
+      const installments =
+        this.buildMonthlyInstallments(
+          totalFee,
+          selectedMonths,
         );
-      }
 
       monthlyAmount =
-        this.roundMoney(
-          totalFee /
-            selectedMonths,
+        Number(
+          installments[0]
+            ?.amount ||
+            0,
         );
+
+      student.monthlyInstallments =
+        installments;
+    } else {
+      student.monthlyInstallments =
+        [];
     }
 
     student.totalFee =
-      this.roundMoney(
-        totalFee,
-      );
+      totalFee;
 
     student.feeType =
       data.feeType;
+
+    student.feeSetupSource =
+      setupSource;
+
+    student.feeStartingDate =
+      feeStartingDate;
 
     student.feeEndingDate =
       feeEndingDate;
@@ -633,9 +1178,7 @@ export class PaymentsService {
       0;
 
     student.pendingAmount =
-      this.roundMoney(
-        totalFee,
-      );
+      totalFee;
 
     student.paymentStatus =
       'unpaid';
@@ -677,6 +1220,12 @@ export class PaymentsService {
           student._id.toString(),
         );
 
+    /*
+     * Invoice / WhatsApp behaviour is intentionally left
+     * unchanged in this fees-side implementation.
+     * We will update those flows separately after fees logic
+     * is fully tested.
+     */
     try {
       const notificationSettings =
         await this.settingsService
@@ -715,11 +1264,43 @@ export class PaymentsService {
             feeType:
               student.feeType,
 
+            /*
+             * Fee creation WhatsApp message amount rule:
+             *
+             * Monthly:
+             *   Send ONLY the current unpaid installment amount.
+             *
+             * Partial:
+             *   Send the student's current remaining balance.
+             *
+             * Yearly:
+             *   Send the student's current remaining balance.
+             *
+             * The invoice snapshot already contains the exact
+             * current payable amount used by the invoice.
+             */
             pendingAmount:
-              Number(
-                student.pendingAmount ||
-                  0,
-              ),
+              student.feeType ===
+              'monthly'
+                ? Number(
+                    invoice.fee
+                      ?.currentPayableAmount ||
+                      student.monthlyInstallments
+                        ?.find(
+                          (
+                            installment,
+                          ) =>
+                            installment.status !==
+                            'paid',
+                        )
+                        ?.amount ||
+                      student.monthlyAmount ||
+                      0,
+                  )
+                : Number(
+                    student.pendingAmount ||
+                      0,
+                  ),
 
             feeEndingDate:
               student.feeEndingDate,
@@ -757,6 +1338,24 @@ export class PaymentsService {
         feeType:
           student.feeType,
 
+        feeStartingDate:
+          student.feeStartingDate,
+
+        feeEndingDate:
+          student.feeEndingDate,
+
+        recurringFeeStartDay:
+          data.feeType === 'monthly' ||
+          data.feeType === 'partial'
+            ? feeSettings.recurringFeeStartDay
+            : null,
+
+        recurringFeeDueDay:
+          data.feeType === 'monthly' ||
+          data.feeType === 'partial'
+            ? feeSettings.recurringFeeDueDay
+            : null,
+
         selectedMonths:
           student.selectedMonths ||
           null,
@@ -764,11 +1363,14 @@ export class PaymentsService {
         monthlyAmount:
           student.monthlyAmount,
 
+        monthlyInstallments:
+          student.feeType ===
+          'monthly'
+            ? student.monthlyInstallments
+            : [],
+
         minimumPartialAmount:
-          data.feeType ===
-          'partial'
-            ? feeSettings.minimumPartialAmount
-            : null,
+          null,
       },
     };
   }
@@ -782,6 +1384,31 @@ export class PaymentsService {
   async setupCommonFee(
     data: FeeSetupData,
   ) {
+    const feeSettings =
+      await this.settingsService.getFeeSettings();
+
+    if (
+      !feeSettings.commonFeeSetupEnabled
+    ) {
+      throw new BadRequestException(
+        'Common fee setup is disabled in settings',
+      );
+    }
+
+    if (
+      !feeSettings.yearlyFeeEnabled
+    ) {
+      throw new BadRequestException(
+        'Yearly fee payment is disabled in settings',
+      );
+    }
+
+    const bulkData: FeeSetupData = {
+      ...data,
+      feeType: 'yearly',
+      selectedMonths: undefined,
+    };
+
     const students =
       await this.studentModel.find({});
 
@@ -808,6 +1435,7 @@ export class PaymentsService {
       const validation =
         this.validateBulkStudent(
           student,
+          'common',
         );
 
       if (
@@ -837,7 +1465,8 @@ export class PaymentsService {
         const result =
           await this.setupStudentFee(
             student._id.toString(),
-            data,
+            bulkData,
+            'common',
           );
 
         successStudents.push({
@@ -902,17 +1531,16 @@ export class PaymentsService {
       commonFee: {
         totalFee:
           Number(
-            data.totalFee,
+            bulkData.totalFee,
           ),
 
         feeType:
-          data.feeType,
+          'yearly',
 
         feeEndingDate:
-          data.feeEndingDate,
+          bulkData.feeEndingDate,
 
         selectedMonths:
-          data.selectedMonths ||
           null,
       },
 
@@ -934,6 +1562,31 @@ export class PaymentsService {
     course: string,
     data: FeeSetupData,
   ) {
+    const feeSettings =
+      await this.settingsService.getFeeSettings();
+
+    if (
+      !feeSettings.courseWiseFeeSetupEnabled
+    ) {
+      throw new BadRequestException(
+        'Course wise fee setup is disabled in settings',
+      );
+    }
+
+    if (
+      !feeSettings.yearlyFeeEnabled
+    ) {
+      throw new BadRequestException(
+        'Yearly fee payment is disabled in settings',
+      );
+    }
+
+    const bulkData: FeeSetupData = {
+      ...data,
+      feeType: 'yearly',
+      selectedMonths: undefined,
+    };
+
     const courseName =
       decodeURIComponent(
         String(
@@ -990,6 +1643,7 @@ export class PaymentsService {
       const validation =
         this.validateBulkStudent(
           student,
+          'course',
         );
 
       if (
@@ -1019,7 +1673,8 @@ export class PaymentsService {
         const result =
           await this.setupStudentFee(
             student._id.toString(),
-            data,
+            bulkData,
+            'course',
           );
 
         successStudents.push({
@@ -1087,17 +1742,16 @@ export class PaymentsService {
       courseFee: {
         totalFee:
           Number(
-            data.totalFee,
+            bulkData.totalFee,
           ),
 
         feeType:
-          data.feeType,
+          'yearly',
 
         feeEndingDate:
-          data.feeEndingDate,
+          bulkData.feeEndingDate,
 
         selectedMonths:
-          data.selectedMonths ||
           null,
       },
 
@@ -1125,6 +1779,9 @@ export class PaymentsService {
         | 'qr';
 
       amount?: number;
+
+      installmentNumber?:
+        number;
     },
   ) {
     const student =
@@ -1146,13 +1803,24 @@ export class PaymentsService {
       );
     }
 
-    const pendingAmount =
+    const totalFee =
       this.roundMoney(
-        student.pendingAmount,
+        Number(
+          student.totalFee ||
+            0,
+        ),
+      );
+
+    const currentPendingAmount =
+      this.roundMoney(
+        Number(
+          student.pendingAmount ||
+            0,
+        ),
       );
 
     if (
-      pendingAmount <= 0 ||
+      currentPendingAmount <= 0 ||
       student.paymentStatus ===
         'paid'
     ) {
@@ -1161,75 +1829,86 @@ export class PaymentsService {
       );
     }
 
-    const feeSettings =
-      await this.settingsService
-        .getFeeSettings();
-
     let paymentAmount =
       0;
+
+    let installmentNumber:
+      number | undefined;
 
     if (
       student.feeType ===
       'monthly'
     ) {
-      const selectedMonths =
-        Number(
-          student.selectedMonths ||
-            0,
+      this.ensureMonthlyInstallments(
+        student,
+      );
+
+      const installments =
+        student.monthlyInstallments ||
+        [];
+
+      const currentInstallment =
+        installments.find(
+          (installment) =>
+            installment.status ===
+            'unpaid',
         );
 
-      const paidMonths =
+      if (!currentInstallment) {
+        throw new BadRequestException(
+          'All monthly installments are already completed',
+        );
+      }
+
+      if (
+        data.installmentNumber !==
+          undefined &&
         Number(
-          student.paidMonths ||
-            0,
+          data.installmentNumber,
+        ) !==
+          Number(
+            currentInstallment.installmentNumber,
+          )
+      ) {
+        throw new BadRequestException(
+          `Month ${currentInstallment.installmentNumber} is the current payable installment`,
+        );
+      }
+
+      installmentNumber =
+        Number(
+          currentInstallment.installmentNumber,
+        );
+
+      paymentAmount =
+        this.roundMoney(
+          Number(
+            currentInstallment.amount ||
+              0,
+          ),
         );
 
       if (
-        selectedMonths <= 0
+        paymentAmount <= 0
       ) {
         throw new BadRequestException(
-          'Monthly duration is not configured',
+          'Current monthly installment amount is invalid',
         );
       }
 
-      if (
-        paidMonths >=
-        selectedMonths
-      ) {
-        throw new BadRequestException(
-          'All monthly payments are already completed',
-        );
-      }
-
-      const nextPaidMonth =
-        paidMonths + 1;
-
-      const isLastMonth =
-        nextPaidMonth ===
-        selectedMonths;
-
-      if (isLastMonth) {
-        paymentAmount =
-          pendingAmount;
-      } else {
-        paymentAmount =
-          Math.min(
-            this.roundMoney(
-              student.monthlyAmount,
-            ),
-            pendingAmount,
-          );
-      }
-
-      student.paidMonths =
-        nextPaidMonth;
+      /*
+       * Do not mark the installment paid yet.
+       * First create the Payment transaction successfully.
+       */
     } else if (
       student.feeType ===
       'partial'
     ) {
       const enteredAmount =
-        Number(
-          data.amount,
+        this.roundMoney(
+          Number(
+            data.amount,
+          ),
         );
 
       if (
@@ -1245,93 +1924,26 @@ export class PaymentsService {
 
       if (
         enteredAmount >
-        pendingAmount
+        currentPendingAmount
       ) {
         throw new BadRequestException(
-          `Payment cannot be greater than pending amount ₹${pendingAmount}`,
-        );
-      }
-
-      const minimumPartialAmount =
-        Number(
-          feeSettings.minimumPartialAmount,
-        );
-
-      const isFinalPayment =
-        this.roundMoney(
-          enteredAmount,
-        ) ===
-        pendingAmount;
-
-      if (
-        !isFinalPayment &&
-        enteredAmount <
-          minimumPartialAmount
-      ) {
-        throw new BadRequestException(
-          `Minimum partial payment is ₹${minimumPartialAmount}`,
+          `Payment cannot be greater than pending amount ₹${currentPendingAmount}`,
         );
       }
 
       paymentAmount =
-        this.roundMoney(
-          enteredAmount,
-        );
+        enteredAmount;
     } else if (
       student.feeType ===
       'yearly'
     ) {
       paymentAmount =
-        pendingAmount;
+        currentPendingAmount;
     } else {
       throw new BadRequestException(
         'Student fee type is not configured',
       );
     }
-
-    const newPaidAmount =
-      this.roundMoney(
-        Number(
-          student.paidAmount ||
-            0,
-        ) +
-          paymentAmount,
-      );
-
-    const newPendingAmount =
-      this.roundMoney(
-        Math.max(
-          0,
-          Number(
-            student.totalFee,
-          ) -
-            newPaidAmount,
-        ),
-      );
-
-    student.paidAmount =
-      newPaidAmount;
-
-    student.pendingAmount =
-      newPendingAmount;
-
-    student.paymentMethod =
-      data.paymentMethod;
-
-    student.paymentStatus =
-      newPendingAmount <= 0
-        ? 'paid'
-        : 'partial';
-
-    if (
-      student.paymentStatus ===
-      'paid'
-    ) {
-      student.lastFeeReminderSentAt =
-        undefined;
-    }
-
-    await student.save();
 
     const payment =
       await this.createPayment({
@@ -1352,7 +1964,94 @@ export class PaymentsService {
 
         paymentMethod:
           data.paymentMethod,
+
+        feeType:
+          student.feeType,
+
+        installmentNumber,
       });
+
+    if (
+      student.feeType ===
+      'monthly'
+    ) {
+      const installment =
+        student.monthlyInstallments.find(
+          (item) =>
+            Number(
+              item.installmentNumber,
+            ) ===
+            installmentNumber,
+        );
+
+      if (!installment) {
+        /*
+         * Payment record exists, so fail loudly instead of
+         * silently corrupting installment state.
+         */
+        throw new BadRequestException(
+          'Monthly installment record not found',
+        );
+      }
+
+      installment.status =
+        'paid';
+
+      installment.paidAt =
+        payment.paymentDate;
+
+      installment.paymentId =
+        payment._id;
+
+      this.recalculateMonthlyStudent(
+        student,
+      );
+    } else {
+      const newPaidAmount =
+        this.roundMoney(
+          Math.min(
+            totalFee,
+            Number(
+              student.paidAmount ||
+                0,
+            ) +
+              paymentAmount,
+          ),
+        );
+
+      const newPendingAmount =
+        this.roundMoney(
+          Math.max(
+            0,
+            totalFee -
+              newPaidAmount,
+          ),
+        );
+
+      student.paidAmount =
+        newPaidAmount;
+
+      student.pendingAmount =
+        newPendingAmount;
+
+      student.paymentStatus =
+        newPendingAmount <= 0
+          ? 'paid'
+          : 'partial';
+    }
+
+    student.paymentMethod =
+      data.paymentMethod;
+
+    if (
+      student.paymentStatus ===
+      'paid'
+    ) {
+      student.lastFeeReminderSentAt =
+        undefined;
+    }
+
+    await student.save();
 
     const invoice =
       await this.invoiceService
@@ -1361,6 +2060,10 @@ export class PaymentsService {
           payment._id.toString(),
         );
 
+    /*
+     * Receipt / WhatsApp flow is intentionally preserved.
+     * We will modify invoice/message content separately.
+     */
     try {
       const notificationSettings =
         await this.settingsService
@@ -1418,6 +2121,17 @@ export class PaymentsService {
       );
     }
 
+    const currentMonthlyInstallment =
+      student.feeType ===
+      'monthly'
+        ? student.monthlyInstallments.find(
+            (item) =>
+              item.status ===
+              'unpaid',
+          ) ||
+          null
+        : null;
+
     return {
       message:
         student.paymentStatus ===
@@ -1468,6 +2182,15 @@ export class PaymentsService {
         monthlyAmount:
           student.monthlyAmount,
 
+        monthlyInstallments:
+          student.feeType ===
+          'monthly'
+            ? student.monthlyInstallments
+            : [],
+
+        currentInstallment:
+          currentMonthlyInstallment,
+
         paidMonths:
           student.paidMonths,
 
@@ -1503,6 +2226,14 @@ export class PaymentsService {
         | 'bank'
         | 'upi'
         | 'qr';
+
+      feeType?:
+        | 'monthly'
+        | 'partial'
+        | 'yearly';
+
+      installmentNumber?:
+        number;
     },
   ) {
     const setting =
@@ -1550,6 +2281,12 @@ export class PaymentsService {
         paymentMethod:
           data.paymentMethod,
 
+        feeType:
+          data.feeType,
+
+        installmentNumber:
+          data.installmentNumber,
+
         paymentStatus:
           'paid',
 
@@ -1558,6 +2295,72 @@ export class PaymentsService {
       });
 
     return payment.save();
+  }
+
+  async clearStudentPaymentHistory(
+    studentId: string,
+  ) {
+    const student =
+      await this.studentModel.findById(
+        studentId,
+      );
+
+    if (!student) {
+      throw new NotFoundException(
+        'Student not found',
+      );
+    }
+
+    const result =
+      await this.paymentModel.deleteMany({
+        studentId:
+          student._id,
+      });
+
+    /*
+     * Clearing history must not alter accounting totals
+     * or monthly Paid/Unpaid state. Only transaction links
+     * and payment timestamps are removed from the schedule.
+     */
+    if (
+      student.feeType ===
+        'monthly' &&
+      Array.isArray(
+        student.monthlyInstallments,
+      )
+    ) {
+      for (
+        const installment of
+          student.monthlyInstallments
+      ) {
+        installment.paymentId =
+          undefined;
+
+        if (
+          installment.status ===
+          'paid'
+        ) {
+          installment.paidAt =
+            undefined;
+        }
+      }
+
+      await student.save();
+    }
+
+    return {
+      message:
+        'Payment history cleared successfully',
+
+      deletedCount:
+        Number(
+          result.deletedCount ||
+            0,
+        ),
+
+      studentId:
+        student._id,
+    };
   }
 
   /*
@@ -1604,6 +2407,12 @@ export class PaymentsService {
     student.feeType =
       undefined;
 
+    student.feeSetupSource =
+      undefined;
+
+    student.feeStartingDate =
+      undefined;
+
     student.feeEndingDate =
       undefined;
 
@@ -1615,6 +2424,9 @@ export class PaymentsService {
 
     student.monthlyAmount =
       0;
+
+    student.monthlyInstallments =
+      [];
 
     student.paidMonths =
       0;
@@ -1654,6 +2466,9 @@ export class PaymentsService {
           student.totalFee,
 
         feeType:
+          null,
+
+        feeStartingDate:
           null,
 
         feeEndingDate:

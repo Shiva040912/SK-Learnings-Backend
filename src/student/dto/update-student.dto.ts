@@ -29,6 +29,12 @@ export class UpdateStudentDto {
   dateOfBirth?: string;
 
   @IsOptional()
+  @IsIn(['male', 'female', 'others'], {
+    message: 'Gender must be Male, Female or Others',
+  })
+  gender?: 'male' | 'female' | 'others';
+
+  @IsOptional()
   @IsString()
   @Matches(/^[6-9]\d{4} \d{5}$/, {
     message:

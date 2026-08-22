@@ -76,6 +76,25 @@ export class Payment {
     | 'qr';
 
   @Prop({
+    enum: [
+      'monthly',
+      'partial',
+      'yearly',
+    ],
+    default: null,
+  })
+  feeType?:
+    | 'monthly'
+    | 'partial'
+    | 'yearly';
+
+  @Prop({
+    min: 1,
+    default: null,
+  })
+  installmentNumber?: number;
+
+  @Prop({
     enum: ['paid'],
     default: 'paid',
   })

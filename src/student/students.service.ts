@@ -165,6 +165,8 @@ export class StudentsService {
 
       dateOfBirth: new Date(createStudentDto.dateOfBirth),
 
+      gender: createStudentDto.gender,
+
       phone: createStudentDto.phone.trim(),
 
       alternatePhone: createStudentDto.alternatePhone?.trim() || undefined,
@@ -281,6 +283,10 @@ export class StudentsService {
 
     if (studentData.dateOfBirth !== undefined) {
       student.dateOfBirth = new Date(studentData.dateOfBirth);
+    }
+
+    if (studentData.gender !== undefined) {
+      student.gender = studentData.gender;
     }
 
     if (studentData.phone !== undefined) {

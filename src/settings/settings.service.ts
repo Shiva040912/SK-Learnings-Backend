@@ -1,4 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 
@@ -42,37 +45,64 @@ export class SettingsService {
     const settings =
       await this.getOrCreateSettings();
 
-    if (
-      updateSettingsDto.minimumMonths !==
-        undefined &&
-      updateSettingsDto.maximumMonths !==
-        undefined &&
-      updateSettingsDto.minimumMonths >
-        updateSettingsDto.maximumMonths
-    ) {
-      throw new Error(
-        'Minimum months cannot be greater than maximum months',
-      );
-    }
-
-    const minimumMonths =
-      updateSettingsDto.minimumMonths ??
-      settings.minimumMonths;
-
-    const maximumMonths =
-      updateSettingsDto.maximumMonths ??
-      settings.maximumMonths;
-
     const defaultMonths =
       updateSettingsDto.defaultMonths ??
       settings.defaultMonths;
 
     if (
-      defaultMonths < minimumMonths ||
-      defaultMonths > maximumMonths
+      !Number.isInteger(
+        Number(defaultMonths),
+      ) ||
+      Number(defaultMonths) < 1
     ) {
-      throw new Error(
-        `Default months must be between ${minimumMonths} and ${maximumMonths}`,
+      throw new BadRequestException(
+        'Default months must be a positive whole number',
+      );
+    }
+
+    const recurringFeeStartDay =
+      updateSettingsDto.recurringFeeStartDay ??
+      settings.recurringFeeStartDay ??
+      1;
+
+    const recurringFeeDueDay =
+      updateSettingsDto.recurringFeeDueDay ??
+      settings.recurringFeeDueDay ??
+      10;
+
+    if (
+      !Number.isInteger(
+        Number(
+          recurringFeeStartDay,
+        ),
+      ) ||
+      Number(
+        recurringFeeStartDay,
+      ) < 1 ||
+      Number(
+        recurringFeeStartDay,
+      ) > 31
+    ) {
+      throw new BadRequestException(
+        'Recurring fee start day must be between 1 and 31',
+      );
+    }
+
+    if (
+      !Number.isInteger(
+        Number(
+          recurringFeeDueDay,
+        ),
+      ) ||
+      Number(
+        recurringFeeDueDay,
+      ) < 1 ||
+      Number(
+        recurringFeeDueDay,
+      ) > 31
+    ) {
+      throw new BadRequestException(
+        'Recurring fee due day must be between 1 and 31',
       );
     }
 
@@ -111,6 +141,10 @@ export class SettingsService {
       defaultMonths:
         settings.defaultMonths,
 
+      /*
+       * Legacy fields are returned so older frontend builds
+       * do not break, but they are not hard limits anymore.
+       */
       minimumMonths:
         settings.minimumMonths,
 
@@ -125,6 +159,22 @@ export class SettingsService {
 
       yearlyFeeEnabled:
         settings.yearlyFeeEnabled,
+
+      commonFeeSetupEnabled:
+        settings.commonFeeSetupEnabled ??
+        true,
+
+      courseWiseFeeSetupEnabled:
+        settings.courseWiseFeeSetupEnabled ??
+        true,
+
+      recurringFeeStartDay:
+        settings.recurringFeeStartDay ??
+        1,
+
+      recurringFeeDueDay:
+        settings.recurringFeeDueDay ??
+        10,
     };
   }
 

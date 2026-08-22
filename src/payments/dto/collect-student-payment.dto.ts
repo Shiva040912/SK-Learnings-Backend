@@ -1,5 +1,6 @@
 import {
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   Min,
@@ -20,6 +21,11 @@ export class CollectStudentPaymentDto {
 
   @IsOptional()
   @IsNumber()
-  @Min(1)
+  @Min(0.01)
   amount?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  installmentNumber?: number;
 }

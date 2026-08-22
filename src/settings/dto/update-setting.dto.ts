@@ -1,3 +1,6 @@
+
+
+
 import {
   IsBoolean,
   IsInt,
@@ -15,20 +18,21 @@ export class UpdateSettingsDto {
 
   @IsOptional()
   @IsInt()
-  @Min(3)
-  @Max(12)
+  @Min(1)
   defaultMonths?: number;
 
+  /*
+   * Legacy settings retained for backward compatibility.
+   * They are no longer used as a hard monthly duration limit.
+   */
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(12)
   minimumMonths?: number;
 
   @IsOptional()
   @IsInt()
-  @Min(3)
-  @Max(12)
+  @Min(1)
   maximumMonths?: number;
 
   @IsOptional()
@@ -43,6 +47,26 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsBoolean()
   yearlyFeeEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  commonFeeSetupEnabled?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  courseWiseFeeSetupEnabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  recurringFeeStartDay?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  recurringFeeDueDay?: number;
 
   @IsOptional()
   @IsBoolean()

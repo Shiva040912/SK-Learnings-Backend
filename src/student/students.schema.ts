@@ -1,7 +1,48 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
 
 export type StudentDocument = HydratedDocument<Student>;
+
+@Schema({
+  _id: false,
+})
+export class MonthlyInstallment {
+  @Prop({
+    required: true,
+    min: 1,
+  })
+  installmentNumber!: number;
+
+  @Prop({
+    required: true,
+    min: 0,
+  })
+  amount!: number;
+
+  @Prop({
+    enum: ['unpaid', 'paid'],
+    default: 'unpaid',
+  })
+  status!: 'unpaid' | 'paid';
+
+  @Prop({
+    type: Date,
+    default: null,
+  })
+  paidAt?: Date;
+
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'Payment',
+    default: null,
+  })
+  paymentId?: Types.ObjectId;
+}
+
+export const MonthlyInstallmentSchema =
+  SchemaFactory.createForClass(
+    MonthlyInstallment,
+  );
 
 @Schema({ timestamps: true })
 export class Student {
@@ -29,6 +70,12 @@ export class Student {
     required: true,
   })
   dateOfBirth!: Date;
+
+  @Prop({
+    required: true,
+    enum: ['male', 'female', 'others'],
+  })
+  gender!: 'male' | 'female' | 'others';
 
   @Prop({
     required: true,
@@ -90,6 +137,18 @@ export class Student {
   feeType?: 'monthly' | 'partial' | 'yearly';
 
   @Prop({
+    enum: ['individual', 'common', 'course'],
+    default: null,
+  })
+  feeSetupSource?: 'individual' | 'common' | 'course';
+
+  @Prop({
+    type: Date,
+    default: null,
+  })
+  feeStartingDate?: Date;
+
+  @Prop({
     type: Date,
     default: null,
   })
@@ -102,8 +161,7 @@ export class Student {
 
   @Prop({
     default: null,
-    min: 3,
-    max: 12,
+    min: 1,
   })
   selectedMonths?: number;
 
@@ -112,6 +170,12 @@ export class Student {
     min: 0,
   })
   monthlyAmount!: number;
+
+  @Prop({
+    type: [MonthlyInstallmentSchema],
+    default: [],
+  })
+  monthlyInstallments!: MonthlyInstallment[];
 
   @Prop({
     default: 0,
@@ -161,4 +225,5 @@ export class Student {
   isActive!: boolean;
 }
 
-export const StudentSchema = SchemaFactory.createForClass(Student);
+export const StudentSchema =
+  SchemaFactory.createForClass(Student);

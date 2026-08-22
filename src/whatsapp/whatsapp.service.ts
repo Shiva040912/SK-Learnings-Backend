@@ -803,14 +803,8 @@ export class WhatsappService {
         'en',
 
       /*
-       * Meta template URL must be:
-       * https://sk-learning-frontend.vercel.app/pay-fees/{{1}}
-       *
-       * Reminder dynamic value:
-       * <studentId>?source=reminder
-       *
-       * Final URL:
-       * https://sk-learning-frontend.vercel.app/pay-fees/<studentId>?source=reminder
+       * Future / existing reminder template.
+       * Keep this method unchanged.
        */
       buttonUrlParameter:
         `${data.studentId.trim()}?source=reminder`,
@@ -832,66 +826,101 @@ export class WhatsappService {
   }
 
   /*
-   * Backward-compatible method.
-   * Some old scheduler/notification code may still call sendFeeDueReminder().
-   * It now sends the approved fee_payment_reminder template with the required
-   * dynamic URL button parameter.
+   * CURRENT APPROVED REMINDER TEMPLATE
+   *
+   * Template:
+   * fee_due_reminder
+   *
+   * Body:
+   * {{1}} = Student Name
+   * {{2}} = Course Name
+   * {{3}} = Pending Fee Amount
+   *
+   * Approved template button URL:
+   *
+   * https://sk-learnings-mobile-frontend.vercel.app/pay-fees/{{1}}
+   *
+   * Meta requires the dynamic button parameter.
+   * Therefore studentId must be sent.
    */
   async sendFeeDueReminder(
     data: {
       phone: string;
-      parentName?: string;
       studentName: string;
+      studentId: string;
       courseName?: string;
       course?: string;
       pendingAmount: number;
-      dueDate?: Date | string;
-      studentId?: string;
-      paymentLinkParam?: string;
     },
   ) {
+    const studentName =
+      String(
+        data.studentName ||
+          '',
+      ).trim();
+
+    const courseName =
+      String(
+        data.courseName ||
+          data.course ||
+          '',
+      ).trim();
+
     const studentId =
       String(
         data.studentId ||
-          data.paymentLinkParam ||
           '',
       )
         .replace(
-          /^student-/,
+          /\{\{1\}\}/g,
           '',
         )
+        .split('?')[0]
         .trim();
 
-    if (!studentId) {
+    if (!studentName) {
       throw new BadRequestException(
-        'Student ID is required for Pay Now button',
+        'Student name is required for fee due reminder',
       );
     }
 
-    return this.sendFeePaymentReminder({
+    if (!courseName) {
+      throw new BadRequestException(
+        'Course name is required for fee due reminder',
+      );
+    }
+
+    if (!studentId) {
+      throw new BadRequestException(
+        'Student ID is required for fee due reminder button',
+      );
+    }
+
+    return this.sendTemplate({
       phone:
         data.phone,
 
-      parentName:
-        String(
-          data.parentName ||
-            data.studentName,
-        ).trim(),
+      templateName:
+        'fee_due_reminder',
 
-      studentName:
-        data.studentName,
+      languageCode:
+        'en',
 
-      studentId,
+      bodyParameters: [
+        studentName,
 
-      pendingAmount:
-        Number(
-          data.pendingAmount ||
-            0,
+        courseName,
+
+        this.formatAmount(
+          Number(
+            data.pendingAmount ||
+              0,
+          ),
         ),
+      ],
 
-      dueDate:
-        data.dueDate ||
-        new Date(),
+      buttonUrlParameter:
+        studentId,
     });
   }
 

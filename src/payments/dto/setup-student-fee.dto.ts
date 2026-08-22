@@ -1,9 +1,12 @@
+
+
+
 import {
   IsDateString,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
-  Max,
   Min,
 } from 'class-validator';
 
@@ -22,12 +25,20 @@ export class SetupStudentFeeDto {
     | 'partial'
     | 'yearly';
 
+  /*
+   * Required by business logic only for Yearly.
+   * Monthly / Partial dates come from common Settings.
+   */
+  @IsOptional()
   @IsDateString()
-  feeEndingDate!: string;
+  feeStartingDate?: string;
 
   @IsOptional()
-  @IsNumber()
-  @Min(3)
-  @Max(12)
+  @IsDateString()
+  feeEndingDate?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
   selectedMonths?: number;
 }
