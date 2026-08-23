@@ -1226,7 +1226,9 @@ export class PaymentsService {
      * We will update those flows separately after fees logic
      * is fully tested.
      */
-    try {
+    // Preserve fee -> invoice -> WhatsApp order without blocking the API response.
+    void (async () => {
+      try {
       const notificationSettings =
         await this.settingsService
           .getNotificationSettings();
@@ -1262,7 +1264,7 @@ export class PaymentsService {
               ),
 
             feeType:
-              student.feeType,
+              student.feeType!,
 
             /*
              * Fee creation WhatsApp message amount rule:
@@ -1303,7 +1305,7 @@ export class PaymentsService {
                   ),
 
             feeEndingDate:
-              student.feeEndingDate,
+              student.feeEndingDate!,
 
             pdfBuffer,
 
@@ -1311,12 +1313,13 @@ export class PaymentsService {
               invoice.invoiceNumber,
           });
       }
-    } catch (error) {
+      } catch (error) {
       console.error(
         'Fee invoice WhatsApp message failed:',
         error,
       );
-    }
+      }
+    })();
 
     return {
       message:
