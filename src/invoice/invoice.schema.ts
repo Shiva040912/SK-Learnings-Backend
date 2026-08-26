@@ -470,6 +470,16 @@ export const InvoiceSchema =
     Invoice,
   );
 
+InvoiceSchema.index({
+  studentId: 1,
+  isActive: 1,
+  invoiceDate: -1,
+});
+
+InvoiceSchema.index({
+  isActive: 1,
+  invoiceDate: -1,
+});
 @Schema({
   timestamps: true,
 })

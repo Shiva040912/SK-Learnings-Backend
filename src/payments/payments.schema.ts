@@ -105,3 +105,7 @@ export const PaymentSchema =
   SchemaFactory.createForClass(
     Payment,
   );
+PaymentSchema.index({
+  studentId: 1,
+  paymentDate: -1,
+});

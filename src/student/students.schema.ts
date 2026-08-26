@@ -235,3 +235,12 @@ export class Student {
 
 export const StudentSchema =
   SchemaFactory.createForClass(Student);
+StudentSchema.index({
+  feeSetupCompleted: 1,
+  paymentStatus: 1,
+  pendingAmount: 1,
+});
+
+StudentSchema.index({
+  feeEndingDate: 1,
+});

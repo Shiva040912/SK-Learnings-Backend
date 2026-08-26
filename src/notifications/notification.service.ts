@@ -285,6 +285,42 @@ export class NotificationsService {
             1,
         });
 
+    const latestPayments =
+      await this.paymentModel.aggregate<{
+        _id: StudentDocument['_id'];
+        payment: PaymentDocument;
+      }>([
+        {
+          $match: {
+            studentId: {
+              $in: students.map((student) => student._id),
+            },
+          },
+        },
+        {
+          $sort: {
+            studentId: 1,
+            paymentDate: -1,
+            createdAt: -1,
+          },
+        },
+        {
+          $group: {
+            _id: '$studentId',
+            payment: {
+              $first: '$$ROOT',
+            },
+          },
+        },
+      ]);
+
+    const latestPaymentByStudent =
+      new Map(
+        latestPayments.map((item) => [
+          item._id.toString(),
+          item.payment,
+        ]),
+      );
     const result:
       NotificationItem[] = [];
 
@@ -364,15 +400,9 @@ export class NotificationsService {
       }
 
       const latestPayment =
-        await this.paymentModel
-          .findOne({
-            studentId:
-              student._id.toString(),
-          })
-          .sort({
-            paymentDate:
-              -1,
-          });
+        latestPaymentByStudent.get(
+          student._id.toString(),
+        );
 
       const paidAfterReminder =
         Boolean(
@@ -677,33 +707,33 @@ export class NotificationsService {
         string;
     }[] = [];
 
-    for (
-      const student of students
-    ) {
-      try {
-        await this.sendReminderToStudent(
-          student,
-        );
+    const concurrency = 4;
 
-        sent +=
-          1;
-      } catch (error) {
-        failed +=
-          1;
+    for (let index = 0; index < students.length; index += concurrency) {
+      const batch = students.slice(index, index + concurrency);
 
+      const results = await Promise.allSettled(
+        batch.map((student) => this.sendReminderToStudent(student)),
+      );
+
+      results.forEach((result, batchIndex) => {
+        const student = batch[batchIndex];
+
+        if (result.status === 'fulfilled') {
+          sent += 1;
+          return;
+        }
+
+        failed += 1;
         failedStudents.push({
-          studentId:
-            student._id.toString(),
-
-          studentName:
-            student.studentName,
-
+          studentId: student._id.toString(),
+          studentName: student.studentName,
           reason:
-            error instanceof Error
-              ? error.message
+            result.reason instanceof Error
+              ? result.reason.message
               : 'WhatsApp reminder failed',
         });
-      }
+      });
     }
 
     return {
