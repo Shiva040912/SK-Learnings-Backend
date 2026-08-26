@@ -970,6 +970,15 @@ export class PaymentsService {
       throw new BadRequestException('Monthly fee plans are no longer available');
     }
 
+    if (
+      student.feeSetupCompleted &&
+      student.paymentStatus !== 'paid'
+    ) {
+      throw new BadRequestException(
+        'Complete the current fee before assigning the next fee',
+      );
+    }
+
     const feeSettings =
       await this.settingsService.getFeeSettings();
 
