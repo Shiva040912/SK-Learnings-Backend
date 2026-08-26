@@ -98,6 +98,11 @@ type NotificationItem = {
           | null;
       }
     | null;
+
+  notificationPreferences: {
+    muteAll: boolean;
+    muteReminder: boolean;
+  };
 };
 
 @Injectable()
@@ -196,6 +201,12 @@ export class NotificationsService {
     student:
       StudentDocument,
   ) {
+    if (student.muteAllFeeNotifications || student.muteFeeReminderNotification) {
+      throw new BadRequestException(
+        'Fee reminder messages are disabled for this student',
+      );
+    }
+
     if (
       !student.feeEndingDate
     ) {
@@ -453,6 +464,11 @@ export class NotificationsService {
                     : null,
               }
             : null,
+
+        notificationPreferences: {
+          muteAll: Boolean(student.muteAllFeeNotifications),
+          muteReminder: Boolean(student.muteFeeReminderNotification),
+        },
       });
     }
 
@@ -613,6 +629,10 @@ export class NotificationsService {
 
         isActive:
           true,
+
+        muteAllFeeNotifications: { $ne: true },
+
+        muteFeeReminderNotification: { $ne: true },
       });
 
     if (
@@ -703,6 +723,42 @@ export class NotificationsService {
       failed,
 
       failedStudents,
+    };
+  }
+  async updateStudentPreferences(
+    studentId: string,
+    preferences: Record<string, unknown>,
+  ) {
+    const allowedKeys = ['muteAll', 'muteReminder'] as const;
+
+    if (!allowedKeys.some((key) => key in preferences)) {
+      throw new BadRequestException('No notification preference provided');
+    }
+
+    for (const key of allowedKeys) {
+      if (key in preferences && typeof preferences[key] !== 'boolean') {
+        throw new BadRequestException('Notification preference must be a boolean');
+      }
+    }
+
+    const update: Record<string, boolean> = {};
+    if ('muteAll' in preferences) update.muteAllFeeNotifications = preferences.muteAll as boolean;
+    if ('muteReminder' in preferences) update.muteFeeReminderNotification = preferences.muteReminder as boolean;
+
+    const student = await this.studentModel.findByIdAndUpdate(
+      studentId,
+      { $set: update },
+      { new: true },
+    );
+
+    if (!student) throw new NotFoundException('Student not found');
+
+    return {
+      message: 'Notification preferences updated',
+      notificationPreferences: {
+        muteAll: Boolean(student.muteAllFeeNotifications),
+        muteReminder: Boolean(student.muteFeeReminderNotification),
+      },
     };
   }
 }

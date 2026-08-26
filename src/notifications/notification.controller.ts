@@ -1,7 +1,9 @@
 import {
   Controller,
+  Body,
   Get,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -35,5 +37,13 @@ export class NotificationsController {
   @Post('send-all-unpaid')
   sendAllUnpaidReminders() {
     return this.notificationsService.sendAllUnpaidReminders();
+  }
+
+  @Patch('student/:studentId/preferences')
+  updateStudentPreferences(
+    @Param('studentId') studentId: string,
+    @Body() preferences: Record<string, unknown>,
+  ) {
+    return this.notificationsService.updateStudentPreferences(studentId, preferences);
   }
 }

@@ -473,6 +473,10 @@ export class InvoiceService {
       );
     }
 
+    if (String(student.feeType) === 'monthly') {
+      throw new BadRequestException('Monthly invoices are no longer available');
+    }
+
     if (
       !student.feeSetupCompleted ||
       !student.feeType

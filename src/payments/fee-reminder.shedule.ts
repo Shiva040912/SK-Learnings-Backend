@@ -328,9 +328,11 @@ export class FeeReminderScheduler {
     today:
       Date,
   ) {
+    if (student.muteAllFeeNotifications) {
+      return;
+    }
+
     if (
-      student.feeType !==
-        'monthly' &&
       student.feeType !==
         'partial'
     ) {
@@ -459,18 +461,7 @@ export class FeeReminderScheduler {
      * current payable = current remaining balance.
      */
     const messagePendingAmount =
-      student.feeType ===
-      'monthly'
-        ? Number(
-            invoice.fee
-              ?.currentPayableAmount ||
-              invoice.invoiceAmount ||
-              0,
-          )
-        : Number(
-            student.pendingAmount ||
-              0,
-          );
+      Number(student.pendingAmount || 0);
 
     await this.whatsappService
       .sendFeePaymentInvoice(
@@ -775,7 +766,6 @@ export class FeeReminderScheduler {
 
           feeType: {
             $in: [
-              'monthly',
               'partial',
               'yearly',
             ],
@@ -794,8 +784,6 @@ export class FeeReminderScheduler {
            * ==========================================
            */
           if (
-            student.feeType ===
-              'monthly' ||
             student.feeType ===
               'partial'
           ) {
@@ -816,6 +804,10 @@ export class FeeReminderScheduler {
             !notificationSettings
               .overdueReminderEnabled
           ) {
+            continue;
+          }
+
+          if (student.muteAllFeeNotifications || student.muteFeeReminderNotification) {
             continue;
           }
 

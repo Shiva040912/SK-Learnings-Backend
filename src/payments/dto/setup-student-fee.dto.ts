@@ -15,19 +15,12 @@ export class SetupStudentFeeDto {
   @Min(1)
   totalFee!: number;
 
-  @IsIn([
-    'monthly',
-    'partial',
-    'yearly',
-  ])
-  feeType!:
-    | 'monthly'
-    | 'partial'
-    | 'yearly';
+  @IsIn(['partial', 'yearly'])
+  feeType!: 'partial' | 'yearly';
 
   /*
    * Required by business logic only for Yearly.
-   * Monthly / Partial dates come from common Settings.
+   * Partial dates come from common Settings.
    */
   @IsOptional()
   @IsDateString()
@@ -37,8 +30,4 @@ export class SetupStudentFeeDto {
   @IsDateString()
   feeEndingDate?: string;
 
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  selectedMonths?: number;
 }

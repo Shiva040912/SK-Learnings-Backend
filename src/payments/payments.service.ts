@@ -544,7 +544,7 @@ export class PaymentsService {
         allowed: false,
 
         reason:
-          `${student.feeType === 'monthly' ? 'Monthly' : 'Partial'} fee plan is already active`,
+          `${String(student.feeType) === 'monthly' ? 'Monthly' : 'Partial'} fee plan is already active`,
       };
     }
 
@@ -966,6 +966,10 @@ export class PaymentsService {
       );
     }
 
+    if (String(data.feeType) === 'monthly') {
+      throw new BadRequestException('Monthly fee plans are no longer available');
+    }
+
     const feeSettings =
       await this.settingsService.getFeeSettings();
 
@@ -1235,6 +1239,7 @@ export class PaymentsService {
 
       if (
         notificationSettings.whatsappEnabled &&
+        !student.muteAllFeeNotifications &&
         invoice
       ) {
         const pdfBuffer =
@@ -1348,13 +1353,13 @@ export class PaymentsService {
           student.feeEndingDate,
 
         recurringFeeStartDay:
-          data.feeType === 'monthly' ||
+          String(data.feeType) === 'monthly' ||
           data.feeType === 'partial'
             ? feeSettings.recurringFeeStartDay
             : null,
 
         recurringFeeDueDay:
-          data.feeType === 'monthly' ||
+          String(data.feeType) === 'monthly' ||
           data.feeType === 'partial'
             ? feeSettings.recurringFeeDueDay
             : null,
@@ -1384,6 +1389,124 @@ export class PaymentsService {
    * ==================================================
    */
 
+  async editStudentFee(
+    studentId: string,
+    data: FeeSetupData,
+  ) {
+    const student = await this.studentModel.findById(studentId);
+
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
+    if (!student.feeSetupCompleted) {
+      throw new BadRequestException('Student fee setup is not completed');
+    }
+
+    if (String(data.feeType) === 'monthly') {
+      throw new BadRequestException('Monthly fee plans are no longer available');
+    }
+
+    const totalFee = this.roundMoney(Number(data.totalFee));
+    const paidAmount = this.roundMoney(Number(student.paidAmount || 0));
+
+    if (!Number.isFinite(totalFee) || totalFee <= 0) {
+      throw new BadRequestException('Total fee must be greater than 0');
+    }
+
+    if (totalFee < paidAmount) {
+      throw new BadRequestException(
+        `Total fee cannot be less than the already paid amount ${paidAmount}`,
+      );
+    }
+
+    const feeSettings = await this.settingsService.getFeeSettings();
+    const today = this.getTodayStart();
+    let feeStartingDate: Date;
+    let feeEndingDate: Date;
+
+    if (data.feeType === 'partial') {
+      if (!feeSettings.partialFeeEnabled) {
+        throw new BadRequestException('Partial fee payment is disabled in settings');
+      }
+
+      const recurringCycle = this.getRecurringFeeCycleDates(
+        Number(feeSettings.recurringFeeStartDay || 1),
+        Number(feeSettings.recurringFeeDueDay || 10),
+        today,
+      );
+      feeStartingDate = recurringCycle.feeStartingDate;
+      feeEndingDate = recurringCycle.feeEndingDate;
+    } else {
+      if (!feeSettings.yearlyFeeEnabled) {
+        throw new BadRequestException('Yearly fee payment is disabled in settings');
+      }
+      if (!data.feeStartingDate || !data.feeEndingDate) {
+        throw new BadRequestException(
+          'Fee starting and ending dates are required for full payment',
+        );
+      }
+      feeStartingDate = this.parseFeeDate(data.feeStartingDate, 'fee starting date');
+      feeEndingDate = this.parseFeeDate(data.feeEndingDate, 'fee ending date');
+      if (feeEndingDate < feeStartingDate) {
+        throw new BadRequestException('Fee ending date cannot be before fee starting date');
+      }
+    }
+
+    const pendingAmount = this.roundMoney(totalFee - paidAmount);
+    student.totalFee = totalFee;
+    student.feeType = data.feeType;
+    student.feeSetupSource = 'individual';
+    student.feeStartingDate = feeStartingDate;
+    student.feeEndingDate = feeEndingDate;
+    student.pendingAmount = pendingAmount;
+    student.paymentStatus = pendingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
+    student.selectedMonths = undefined;
+    student.monthlyAmount = 0;
+    student.monthlyInstallments = [];
+    student.paidMonths = 0;
+    student.lastFeeReminderSentAt = undefined;
+    student.feeReminderCount = 0;
+    await student.save();
+
+    void (async () => {
+      try {
+        const invoice = await this.invoiceService.createFeeSetupInvoice(
+          student._id.toString(),
+        );
+        if (!invoice) return;
+
+        const notificationSettings =
+          await this.settingsService.getNotificationSettings();
+        if (
+          !notificationSettings.whatsappEnabled ||
+          student.muteAllFeeNotifications
+        ) return;
+
+        const pdfBuffer =
+          await this.invoiceService.generateInvoicePdfByDocument(invoice);
+        await this.whatsappService.sendFeePaymentInvoice({
+          phone: student.phone,
+          parentName: student.parentName,
+          studentName: student.studentName,
+          studentId: student._id.toString(),
+          totalFee: Number(student.totalFee || 0),
+          feeType: student.feeType!,
+          pendingAmount: Number(student.pendingAmount || 0),
+          feeEndingDate: student.feeEndingDate!,
+          pdfBuffer,
+          invoiceNumber: invoice.invoiceNumber,
+        });
+      } catch (error) {
+        console.error('Background edited fee invoice processing failed:', error);
+      }
+    })();
+
+    return {
+      message: 'Fee details updated successfully',
+      student,
+    };
+  }
   async setupCommonFee(
     data: FeeSetupData,
   ) {
@@ -1798,6 +1921,10 @@ export class PaymentsService {
       );
     }
 
+    if (String(student.feeType) === 'monthly') {
+      throw new BadRequestException('Monthly payment collection is no longer available');
+    }
+
     if (
       !student.feeSetupCompleted
     ) {
@@ -2056,73 +2183,56 @@ export class PaymentsService {
 
     await student.save();
 
-    const invoice =
-      await this.invoiceService
-        .createPaymentReceiptInvoice(
-          student._id.toString(),
-          payment._id.toString(),
-        );
+    const invoice = null;
 
     /*
-     * Receipt / WhatsApp flow is intentionally preserved.
-     * We will modify invoice/message content separately.
+     * Payment persistence is the user-facing critical path.
+     * Receipt creation, PDF rendering and WhatsApp delivery run in the
+     * background so a slow external service never delays the UI update.
      */
-    try {
-      const notificationSettings =
-        await this.settingsService
-          .getNotificationSettings();
+    void (async () => {
+      try {
+        const receiptInvoice =
+          await this.invoiceService.createPaymentReceiptInvoice(
+            student._id.toString(),
+            payment._id.toString(),
+          );
 
-      if (
-        notificationSettings.whatsappEnabled &&
-        invoice
-      ) {
+        if (!receiptInvoice) return;
+
+        const notificationSettings =
+          await this.settingsService.getNotificationSettings();
+
+        if (
+          !notificationSettings.whatsappEnabled ||
+          student.muteAllFeeNotifications
+        ) {
+          return;
+        }
+
         const pdfBuffer =
-          await this.invoiceService
-            .generateInvoicePdfByDocument(
-              invoice,
-            );
+          await this.invoiceService.generateInvoicePdfByDocument(
+            receiptInvoice,
+          );
 
-        await this.whatsappService
-          .sendFeePaymentReceipt({
-            phone:
-              student.phone,
-
-            parentName:
-              student.parentName,
-
-            studentName:
-              student.studentName,
-
-            paidAmount:
-              Number(
-                payment.amount ||
-                  paymentAmount,
-              ),
-
-            paymentMethod:
-              data.paymentMethod,
-
-            paymentDate:
-              payment.paymentDate,
-
-            remainingBalance:
-              Number(
-                student.pendingAmount ||
-                  0,
-              ),
-
-            pdfBuffer,
-
-            receiptNumber:
-              invoice.invoiceNumber,
-          });
+        await this.whatsappService.sendFeePaymentReceipt({
+          phone: student.phone,
+          parentName: student.parentName,
+          studentName: student.studentName,
+          paidAmount: Number(payment.amount || paymentAmount),
+          paymentMethod: data.paymentMethod,
+          paymentDate: payment.paymentDate,
+          remainingBalance: Number(student.pendingAmount || 0),
+          pdfBuffer,
+          receiptNumber: receiptInvoice.invoiceNumber,
+        });
+      } catch (error) {
+        console.error(
+          'Background payment receipt processing failed:',
+          error,
+        );
       }
-    } catch (error) {
-      console.error(
-        'Payment receipt WhatsApp message failed:',
-        error,
-      );
-    }
+    })();
 
     const currentMonthlyInstallment =
       student.feeType ===

@@ -118,7 +118,7 @@ export class DashboardService {
           count: item.count,
         })),
 
-      feeStatus: students.map(
+      studentDetails: students.map(
         (student) => ({
           studentId: student._id,
           studentName: student.studentName,

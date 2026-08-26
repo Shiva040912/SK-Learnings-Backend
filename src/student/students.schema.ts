@@ -219,6 +219,14 @@ export class Student {
   })
   feeReminderCount!: number;
 
+  @Prop({ default: false })
+  muteAllFeeNotifications!: boolean;
+
+
+  @Prop({ default: false })
+  muteFeeReminderNotification!: boolean;
+
+
   @Prop({
     default: true,
   })

@@ -139,6 +139,14 @@ export class PaymentsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Put('student/:studentId/fee-edit')
+  editStudentFee(
+    @Param('studentId') studentId: string,
+    @Body() setupStudentFeeDto: SetupStudentFeeDto,
+  ) {
+    return this.paymentsService.editStudentFee(studentId, setupStudentFeeDto);
+  }
+  @UseGuards(JwtAuthGuard)
   @Post(
     'student/:studentId/collect',
   )
