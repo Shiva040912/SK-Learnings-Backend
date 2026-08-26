@@ -63,11 +63,7 @@ export class FeeReminderScheduler {
       InvoiceService,
   ) {}
 
-  /*
-   * ==================================================
-   * DATE HELPERS
-   * ==================================================
-   */
+  
 
   private getTodayStart() {
     const date =
@@ -88,10 +84,7 @@ export class FeeReminderScheduler {
     month: number,
     requestedDay: number,
   ) {
-    /*
-     * If user configured 31 but month has only 30 / 28 days,
-     * automatically use the last available day of that month.
-     */
+    
     const lastDay =
       new Date(
         year,
@@ -154,23 +147,7 @@ export class FeeReminderScheduler {
     );
   }
 
-  /*
-   * Gets the recurring Monthly / Partial cycle which
-   * contains the current date.
-   *
-   * Example:
-   * Start Day = 1
-   * Due Day   = 10
-   *
-   * 01 Sep -> 10 Sep
-   * 01 Oct -> 10 Oct
-   *
-   * If Due Day is before Start Day:
-   * Start Day = 25
-   * Due Day   = 5
-   *
-   * 25 Sep -> 05 Oct
-   */
+  
   private getCurrentRecurringCycle(
     startDay: number,
     dueDay: number,
@@ -311,12 +288,7 @@ export class FeeReminderScheduler {
     );
   }
 
-  /*
-   * ==================================================
-   * MONTHLY / PARTIAL
-   * MONTH START INVOICE MESSAGE
-   * ==================================================
-   */
+ 
 
   private async sendRecurringInvoiceIfRequired(
     student:
@@ -357,9 +329,7 @@ export class FeeReminderScheduler {
         recurringStartDay,
       );
 
-    /*
-     * Invoice is sent only on configured Start Day.
-     */
+    
     if (
       !this.isSameDate(
         today,
@@ -369,11 +339,7 @@ export class FeeReminderScheduler {
       return;
     }
 
-    /*
-     * Cron runs every hour.
-     * Never send the same month's invoice multiple times
-     * on the same Start Day.
-     */
+    
     const alreadySentToday =
       await this.wasFeeInvoiceSentToday(
         student._id.toString(),
@@ -386,11 +352,7 @@ export class FeeReminderScheduler {
       return;
     }
 
-    /*
-     * If a payment was already received on this cycle's
-     * Start Day before the cron executes, do not immediately
-     * ask for another payment.
-     */
+   
     const paidInCurrentCycle =
       await this.hasPaymentInCycle(
         student,
@@ -410,22 +372,14 @@ export class FeeReminderScheduler {
         today,
       );
 
-    /*
-     * Update student's visible recurring dates so that
-     * newly generated invoice always shows the CURRENT
-     * month's Start / Due date.
-     */
+    
     student.feeStartingDate =
       cycle.cycleStart;
 
     student.feeEndingDate =
       cycle.cycleDue;
 
-    /*
-     * A new monthly cycle starts here.
-     * Old cycle reminder timestamp must not block the
-     * new cycle's reminder.
-     */
+    
     student.lastFeeReminderSentAt =
       undefined;
 
@@ -453,13 +407,7 @@ export class FeeReminderScheduler {
           invoice,
         );
 
-    /*
-     * Monthly:
-     * invoiceAmount/currentPayable = current month's installment.
-     *
-     * Partial:
-     * current payable = current remaining balance.
-     */
+    
     const messagePendingAmount =
       Number(student.pendingAmount || 0);
 
@@ -505,25 +453,7 @@ export class FeeReminderScheduler {
     );
   }
 
-  /*
-   * ==================================================
-   * REMINDER RULE
-   * ==================================================
-   *
-   * YEARLY:
-   * Due date reached -> repeat reminder until full fee paid.
-   *
-   * MONTHLY:
-   * Current cycle due date reached -> repeat reminder until
-   * one payment for the current monthly cycle is completed.
-   *
-   * PARTIAL:
-   * Current cycle due date reached -> repeat reminder until
-   * at least one partial payment is received in that cycle.
-   *
-   * Next month creates a fresh cycle.
-   * ==================================================
-   */
+  
 
   private async shouldSendRecurringReminder(
     student:
@@ -542,9 +472,7 @@ export class FeeReminderScheduler {
         today,
       );
 
-    /*
-     * Reminder starts on the Due Day itself.
-     */
+   
     if (
       today <
       cycle.cycleDue
@@ -557,11 +485,7 @@ export class FeeReminderScheduler {
       };
     }
 
-    /*
-     * Monthly / Partial:
-     * One payment in this month's cycle means that
-     * cycle's reminder is complete.
-     */
+   
     const paymentReceived =
       await this.hasPaymentInCycle(
         student,
@@ -587,50 +511,95 @@ export class FeeReminderScheduler {
     };
   }
 
-  private canSendByInterval(
-    student:
-      StudentDocument,
-    intervalDays:
-      number,
-    cycleStart?:
-      Date,
+  private async acquireReminderLock(
+    student: StudentDocument,
+    intervalDays: number,
+    cycleStart?: Date,
   ) {
-    if (
-      !student.lastFeeReminderSentAt
-    ) {
-      return true;
-    }
+    const now = new Date();
 
-    const lastSentDate =
-      new Date(
-        student.lastFeeReminderSentAt,
-      );
-
-    /*
-     * Monthly / Partial new cycle:
-     * Previous month's reminder must not block this cycle.
-     */
-    if (
-      cycleStart &&
-      lastSentDate <
-        cycleStart
-    ) {
-      return true;
-    }
-
-    const nextReminderDate =
-      new Date(
-        lastSentDate,
-      );
-
-    nextReminderDate.setDate(
-      nextReminderDate.getDate() +
-        intervalDays,
+    const intervalThreshold = new Date(now);
+    intervalThreshold.setDate(
+      intervalThreshold.getDate() - intervalDays,
     );
 
-    return (
-      new Date() >=
-      nextReminderDate
+    let allowedBefore = intervalThreshold;
+
+    if (cycleStart && cycleStart > allowedBefore) {
+      allowedBefore = cycleStart;
+    }
+
+    const claimedStudent =
+      await this.studentModel.findOneAndUpdate(
+        {
+          _id: student._id,
+
+          feeSetupCompleted: true,
+
+          paymentStatus: {
+            $ne: 'paid',
+          },
+
+          pendingAmount: {
+            $gt: 0,
+          },
+
+          $or: [
+            {
+              lastFeeReminderSentAt: {
+                $exists: false,
+              },
+            },
+            {
+              lastFeeReminderSentAt: null,
+            },
+            {
+              lastFeeReminderSentAt: {
+                $lte: allowedBefore,
+              },
+            },
+          ],
+        },
+        {
+          $set: {
+            lastFeeReminderSentAt: now,
+          },
+
+          $inc: {
+            feeReminderCount: 1,
+          },
+        },
+        {
+          new: true,
+        },
+      );
+
+    if (!claimedStudent) {
+      return null;
+    }
+
+    return {
+      claimedAt: now,
+    };
+  }
+
+  private async releaseReminderLock(
+    studentId: string,
+    claimedAt: Date,
+  ) {
+    await this.studentModel.updateOne(
+      {
+        _id: studentId,
+        lastFeeReminderSentAt: claimedAt,
+      },
+      {
+        $unset: {
+          lastFeeReminderSentAt: 1,
+        },
+        $inc: {
+          feeReminderCount: -1,
+        },
+      },
     );
   }
 
@@ -663,32 +632,14 @@ export class FeeReminderScheduler {
       );
     }
 
-    /*
-     * Partial + Yearly reminder:
-     * send remaining balance.
-     */
+    
     return Number(
       student.pendingAmount ||
         0,
     );
   }
 
-  /*
-   * ==================================================
-   * MAIN CRON
-   * ==================================================
-   *
-   * Runs every hour.
-   *
-   * 1. On Monthly / Partial Start Day:
-   *    Generates fresh invoice + sends invoice message.
-   *
-   * 2. On / after Due Day:
-   *    Sends reminders using configured repeat interval.
-   *
-   * 3. Paid students are ignored.
-   * ==================================================
-   */
+  
 
   @Cron(
     '0 0 * * * *',
@@ -711,10 +662,7 @@ export class FeeReminderScheduler {
             .getFeeSettings(),
         ]);
 
-      /*
-       * No WhatsApp notification should be sent
-       * when WhatsApp is disabled.
-       */
+      
       if (
         !notificationSettings
           .whatsappEnabled
@@ -777,12 +725,7 @@ export class FeeReminderScheduler {
           students
       ) {
         try {
-          /*
-           * ==========================================
-           * STEP 1
-           * MONTHLY / PARTIAL START-DAY INVOICE
-           * ==========================================
-           */
+          
           if (
             student.feeType ===
               'partial'
@@ -795,11 +738,7 @@ export class FeeReminderScheduler {
             );
           }
 
-          /*
-           * Reminder functionality can independently
-           * be disabled while recurring invoice message
-           * still continues.
-           */
+          
           if (
             !notificationSettings
               .overdueReminderEnabled
@@ -817,11 +756,7 @@ export class FeeReminderScheduler {
           let reminderCycleStart:
             Date | undefined;
 
-          /*
-           * ==========================================
-           * YEARLY REMINDER
-           * ==========================================
-           */
+          
           if (
             student.feeType ===
             'yearly'
@@ -848,18 +783,12 @@ export class FeeReminderScheduler {
               0,
             );
 
-            /*
-             * Reminder begins ON the ending date.
-             */
+           
             reminderDue =
               today >=
               yearlyDueDate;
           } else {
-            /*
-             * ==========================================
-             * MONTHLY / PARTIAL REMINDER
-             * ==========================================
-             */
+            
             const recurringReminder =
               await this.shouldSendRecurringReminder(
                 student,
@@ -877,11 +806,7 @@ export class FeeReminderScheduler {
                 .cycle
                 .cycleStart;
 
-            /*
-             * Keep current recurring dates synchronized
-             * even if the invoice message could not be
-             * generated because invoice feature is off.
-             */
+            
             if (
               !this.isSameDate(
                 student.feeStartingDate ||
@@ -922,23 +847,6 @@ export class FeeReminderScheduler {
             continue;
           }
 
-          /*
-           * Repeat only according to configured
-           * overdue reminder interval.
-           */
-          const canSendReminder =
-            this.canSendByInterval(
-              student,
-              intervalDays,
-              reminderCycleStart,
-            );
-
-          if (
-            !canSendReminder
-          ) {
-            continue;
-          }
-
           const reminderAmount =
             this.getReminderAmount(
               student,
@@ -953,43 +861,75 @@ export class FeeReminderScheduler {
             continue;
           }
 
-          await this.whatsappService
-            .sendFeePaymentReminder(
-              {
-                phone:
-                  student.phone,
+          
+          const reminderDueDate =
+            student.feeType ===
+            'yearly'
+              ? student.feeEndingDate
+              : this.getCurrentRecurringCycle(
+                  recurringStartDay,
+                  recurringDueDay,
+                  today,
+                ).cycleDue;
 
-                parentName:
-                  student.parentName,
-
-                studentName:
-                  student.studentName,
-
-                studentId:
-                  student._id.toString(),
-
-                pendingAmount:
-                  reminderAmount,
-
-                dueDate:
-                  student.feeEndingDate!,
-              },
+          if (!reminderDueDate) {
+            this.logger.warn(
+              `Reminder due date missing for ${student.studentName}`,
             );
 
-          student.lastFeeReminderSentAt =
-            new Date();
+            continue;
+          }
 
-          student.feeReminderCount =
-            Number(
-              student.feeReminderCount ||
-                0,
-            ) + 1;
+          const reminderLock =
+            await this.acquireReminderLock(
+              student,
+              intervalDays,
+              reminderCycleStart,
+            );
 
-          await student.save();
+          if (!reminderLock) {
+            this.logger.debug(
+              `Duplicate reminder skipped for ${student.studentName}`,
+            );
 
-          this.logger.log(
-            `${student.feeType} fee reminder sent to ${student.studentName}. Amount: ${reminderAmount}`,
-          );
+            continue;
+          }
+
+          try {
+            await this.whatsappService
+              .sendFeePaymentReminder(
+                {
+                  phone:
+                    student.phone,
+
+                  parentName:
+                    student.parentName,
+
+                  studentName:
+                    student.studentName,
+
+                  studentId:
+                    student._id.toString(),
+
+                  pendingAmount:
+                    reminderAmount,
+
+                  dueDate:
+                    reminderDueDate,
+                },
+              );
+
+            this.logger.log(
+              `${student.feeType} fee reminder sent to ${student.studentName}. Amount: ${reminderAmount}`,
+            );
+          } catch (sendError) {
+            await this.releaseReminderLock(
+              student._id.toString(),
+              reminderLock.claimedAt,
+            );
+
+            throw sendError;
+          }
         } catch (
           error
         ) {
