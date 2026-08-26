@@ -954,10 +954,13 @@ export class FeeReminderScheduler {
           }
 
           await this.whatsappService
-            .sendFeeDueReminder(
+            .sendFeePaymentReminder(
               {
                 phone:
                   student.phone,
+
+                parentName:
+                  student.parentName,
 
                 studentName:
                   student.studentName,
@@ -965,11 +968,11 @@ export class FeeReminderScheduler {
                 studentId:
                   student._id.toString(),
 
-                courseName:
-                  student.course,
-
                 pendingAmount:
                   reminderAmount,
+
+                dueDate:
+                  student.feeEndingDate!,
               },
             );
 
