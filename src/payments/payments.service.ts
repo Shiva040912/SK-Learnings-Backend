@@ -1346,125 +1346,19 @@ export class PaymentsService {
     // Persisting the student fee is the only work that must finish before the
     // admin gets a response. Invoice/PDF/WhatsApp processing continues safely
     // in the background, keeping individual setup close to database latency.
-    const invoice = null;
     void this.processBulkFeeInvoices([
       student._id.toString(),
     ]);
 
-    /*
-     * Invoice / WhatsApp behaviour is intentionally left
-     * unchanged in this fees-side implementation.
-     * We will update those flows separately after fees logic
-     * is fully tested.
-     */
-    // Preserve fee -> invoice -> WhatsApp order without blocking the API response.
-    if (invoice) void (async () => {
-      try {
-      const notificationSettings =
-        await this.settingsService
-          .getNotificationSettings();
-
-      if (
-        notificationSettings.whatsappEnabled &&
-        !student.muteAllFeeNotifications &&
-        invoice
-      ) {
-        const pdfBuffer =
-          await this.invoiceService
-            .generateInvoicePdfByDocument(
-              invoice,
-            );
-
-        await this.whatsappService
-          .sendFeePaymentInvoice({
-            phone:
-              student.phone,
-
-            parentName:
-              student.parentName,
-
-            studentName:
-              student.studentName,
-
-            studentId:
-              student._id.toString(),
-
-            totalFee:
-              Number(
-                student.totalFee ||
-                  0,
-              ),
-
-            feeType:
-              student.feeType!,
-
-            /*
-             * Fee creation WhatsApp message amount rule:
-             *
-             * Monthly:
-             *   Send ONLY the current unpaid installment amount.
-             *
-             * Partial:
-             *   Send the student's current remaining balance.
-             *
-             * Yearly:
-             *   Send the student's current remaining balance.
-             *
-             * The invoice snapshot already contains the exact
-             * current payable amount used by the invoice.
-             */
-            pendingAmount:
-              student.feeType ===
-              'monthly'
-                ? Number(
-                    invoice.fee
-                      ?.currentPayableAmount ||
-                      student.monthlyInstallments
-                        ?.find(
-                          (
-                            installment,
-                          ) =>
-                            installment.status !==
-                            'paid',
-                        )
-                        ?.amount ||
-                      student.monthlyAmount ||
-                      0,
-                  )
-                : Number(
-                    student.pendingAmount ||
-                      0,
-                  ),
-
-            feeEndingDate:
-              student.feeEndingDate!,
-
-            pdfBuffer,
-
-            invoiceNumber:
-              invoice.invoiceNumber,
-          });
-      }
-      } catch (error) {
-      console.error(
-        'Fee invoice WhatsApp message failed:',
-        error,
-      );
-      }
-    })();
-
     return {
-      message:
-        invoice
-          ? 'Student fee setup completed and invoice generated successfully'
-          : 'Student fee setup completed successfully',
+      message: 'Student fee setup completed successfully',
 
       setupMode:
         'individual',
 
       student,
 
-      invoice,
+      invoice: null,
 
       calculation: {
         totalFee:
