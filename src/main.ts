@@ -29,6 +29,7 @@ async function bootstrap() {
       const allowedOrigins = [
         'http://localhost:5173',
         'https://sk-learning-frontend.vercel.app',
+        'https://sk-learning-frontend.shivaarun0071.workers.dev',
       ];
 
       if (!origin) {
