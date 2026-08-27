@@ -586,6 +586,122 @@ export class PaymentsService {
     };
   }
 
+  private getYearlyBulkFeeValues(data: FeeSetupData) {
+    const totalFee = this.roundMoney(Number(data.totalFee));
+    if (!Number.isFinite(totalFee) || totalFee <= 0) {
+      throw new BadRequestException('Total fee must be greater than 0');
+    }
+    if (!data.feeStartingDate || !data.feeEndingDate) {
+      throw new BadRequestException(
+        'Fee starting and ending dates are required for yearly fee setup',
+      );
+    }
+    const feeStartingDate = this.parseFeeDate(
+      data.feeStartingDate,
+      'fee starting date',
+    );
+    const feeEndingDate = this.parseFeeDate(
+      data.feeEndingDate,
+      'fee ending date',
+    );
+    const today = this.getTodayStart();
+    if (feeStartingDate < today || feeEndingDate < today) {
+      throw new BadRequestException('Fee dates cannot be in the past');
+    }
+    if (feeEndingDate < feeStartingDate) {
+      throw new BadRequestException(
+        'Fee ending date cannot be before fee starting date',
+      );
+    }
+    return { totalFee, feeStartingDate, feeEndingDate };
+  }
+
+  private async applyBulkYearlyFee(
+    students: StudentDocument[],
+    setupSource: 'common' | 'course',
+    data: FeeSetupData,
+  ) {
+    const { totalFee, feeStartingDate, feeEndingDate } =
+      this.getYearlyBulkFeeValues(data);
+    if (students.length === 0) return;
+
+    await this.studentModel.updateMany(
+      { _id: { $in: students.map((student) => student._id) } },
+      {
+        $set: {
+          totalFee,
+          feeType: 'yearly',
+          feeSetupSource: setupSource,
+          feeStartingDate,
+          feeEndingDate,
+          feeSetupCompleted: true,
+          paidAmount: 0,
+          pendingAmount: totalFee,
+          paymentStatus: 'unpaid',
+          paidMonths: 0,
+          monthlyAmount: 0,
+          monthlyInstallments: [],
+          feeReminderCount: 0,
+        },
+        $unset: {
+          paymentMethod: 1,
+          selectedMonths: 1,
+          lastFeeReminderSentAt: 1,
+        },
+      },
+    );
+
+    void this.processBulkFeeInvoices(
+      students.map((student) => student._id.toString()),
+    );
+  }
+
+  private async processBulkFeeInvoices(studentIds: string[]) {
+    const concurrency = Math.min(4, studentIds.length);
+    let nextIndex = 0;
+    const worker = async () => {
+      while (nextIndex < studentIds.length) {
+        const studentId = studentIds[nextIndex++];
+        try {
+          const invoice =
+            await this.invoiceService.createFeeSetupInvoice(studentId);
+          if (!invoice) continue;
+          const [student, notificationSettings] = await Promise.all([
+            this.studentModel.findById(studentId),
+            this.settingsService.getNotificationSettings(),
+          ]);
+          if (
+            !student ||
+            !notificationSettings.whatsappEnabled ||
+            student.muteAllFeeNotifications
+          ) continue;
+          const pdfBuffer =
+            await this.invoiceService.generateInvoicePdfByDocument(invoice);
+          await this.whatsappService.sendFeePaymentInvoice({
+            phone: student.phone,
+            parentName: student.parentName,
+            studentName: student.studentName,
+            studentId,
+            totalFee: Number(student.totalFee || 0),
+            feeType: student.feeType!,
+            pendingAmount: Number(student.pendingAmount || 0),
+            feeEndingDate: student.feeEndingDate!,
+            pdfBuffer,
+            invoiceNumber: invoice.invoiceNumber,
+          });
+        } catch (error) {
+          console.error(
+            `Background bulk fee invoice processing failed for ${studentId}:`,
+            error,
+          );
+        }
+      }
+    };
+    await Promise.all(
+      Array.from({ length: concurrency }, () => worker()),
+    );
+  }
+
   async setFeeDueDate(
     feeDueDate: string,
   ) {
@@ -1564,6 +1680,8 @@ export class PaymentsService {
     const failedStudents:
       any[] = [];
 
+    const eligibleStudents: StudentDocument[] = [];
+
     for (
       const student of students
     ) {
@@ -1597,13 +1715,7 @@ export class PaymentsService {
       }
 
       try {
-        const result =
-          await this.setupStudentFee(
-            student._id.toString(),
-            bulkData,
-            'common',
-          );
-
+        eligibleStudents.push(student);
         successStudents.push({
           studentId:
             student._id,
@@ -1617,10 +1729,7 @@ export class PaymentsService {
           course:
             student.course,
 
-          invoiceNumber:
-            result.invoice
-              ?.invoiceNumber ||
-            null,
+          invoiceNumber: null,
         });
       } catch (error) {
         failedStudents.push({
@@ -1643,6 +1752,12 @@ export class PaymentsService {
         });
       }
     }
+
+    await this.applyBulkYearlyFee(
+      eligibleStudents,
+      'common',
+      bulkData,
+    );
 
     return {
       message:
@@ -1772,6 +1887,8 @@ export class PaymentsService {
     const failedStudents:
       any[] = [];
 
+    const eligibleStudents: StudentDocument[] = [];
+
     for (
       const student of students
     ) {
@@ -1805,13 +1922,7 @@ export class PaymentsService {
       }
 
       try {
-        const result =
-          await this.setupStudentFee(
-            student._id.toString(),
-            bulkData,
-            'course',
-          );
-
+        eligibleStudents.push(student);
         successStudents.push({
           studentId:
             student._id,
@@ -1825,10 +1936,7 @@ export class PaymentsService {
           course:
             student.course,
 
-          invoiceNumber:
-            result.invoice
-              ?.invoiceNumber ||
-            null,
+          invoiceNumber: null,
         });
       } catch (error) {
         failedStudents.push({
@@ -1851,6 +1959,12 @@ export class PaymentsService {
         });
       }
     }
+
+    await this.applyBulkYearlyFee(
+      eligibleStudents,
+      'course',
+      bulkData,
+    );
 
     return {
       message:
