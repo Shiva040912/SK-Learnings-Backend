@@ -1343,11 +1343,13 @@ export class PaymentsService {
 
     await student.save();
 
-    const invoice =
-      await this.invoiceService
-        .createFeeSetupInvoice(
-          student._id.toString(),
-        );
+    // Persisting the student fee is the only work that must finish before the
+    // admin gets a response. Invoice/PDF/WhatsApp processing continues safely
+    // in the background, keeping individual setup close to database latency.
+    const invoice = null;
+    void this.processBulkFeeInvoices([
+      student._id.toString(),
+    ]);
 
     /*
      * Invoice / WhatsApp behaviour is intentionally left
@@ -1356,7 +1358,7 @@ export class PaymentsService {
      * is fully tested.
      */
     // Preserve fee -> invoice -> WhatsApp order without blocking the API response.
-    void (async () => {
+    if (invoice) void (async () => {
       try {
       const notificationSettings =
         await this.settingsService
