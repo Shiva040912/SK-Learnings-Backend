@@ -74,7 +74,7 @@ export class InvoicePdfService {
           'Monthly',
 
         partial:
-          'Partial',
+          'Part Payment',
 
         yearly:
           'Yearly',
@@ -291,7 +291,7 @@ export class InvoicePdfService {
           } monthly installments`
         : fee.feeType ===
             'partial'
-          ? 'Flexible partial payments'
+          ? 'Flexible part payments'
           : 'Full fee payment';
 
     const statusClass =
@@ -317,10 +317,10 @@ export class InvoicePdfService {
       isReceipt
         ? isFullyPaid
           ? 'Paid'
-          : 'Partial'
+          : 'Part Payment'
         : invoice.paymentStatus ===
             'partial'
-          ? 'Partial'
+          ? 'Part Payment'
           : 'Unpaid';
 
     const logoHtml =
@@ -503,7 +503,7 @@ export class InvoicePdfService {
         ? `
           <section class="installment-section">
             <div class="section-title">
-              PARTIAL PAYMENT HISTORY
+              PART PAYMENT HISTORY
             </div>
 
             <div class="installment-table">

@@ -40,9 +40,7 @@ export class MonthlyInstallment {
 }
 
 export const MonthlyInstallmentSchema =
-  SchemaFactory.createForClass(
-    MonthlyInstallment,
-  );
+  SchemaFactory.createForClass(MonthlyInstallment);
 
 @Schema({ timestamps: true })
 export class Student {
@@ -222,19 +220,28 @@ export class Student {
   @Prop({ default: false })
   muteAllFeeNotifications!: boolean;
 
-
   @Prop({ default: false })
   muteFeeReminderNotification!: boolean;
-
 
   @Prop({
     default: true,
   })
   isActive!: boolean;
+
+  @Prop({
+    default: 0,
+    min: 0,
+  })
+  paymentPageVisitedCount!: number;
+
+  @Prop({
+    type: Date,
+    default: null,
+  })
+  lastPaymentPageVisitedAt?: Date;
 }
 
-export const StudentSchema =
-  SchemaFactory.createForClass(Student);
+export const StudentSchema = SchemaFactory.createForClass(Student);
 StudentSchema.index({
   feeSetupCompleted: 1,
   paymentStatus: 1,

@@ -340,5 +340,25 @@ export class StudentsService {
     };
   }
 
- 
+  async trackPaymentLinkClick(studentId: string) {
+    const student = await this.studentModel.findById(studentId);
+
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
+    student.paymentPageVisitedCount =
+      Number(student.paymentPageVisitedCount || 0) + 1;
+
+    student.lastPaymentPageVisitedAt = new Date();
+
+    await student.save();
+
+    return {
+      success: true,
+      paymentPageVisitedCount: student.paymentPageVisitedCount,
+
+      lastPaymentPageVisitedAt: student.lastPaymentPageVisitedAt,
+    };
+  }
 }

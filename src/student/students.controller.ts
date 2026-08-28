@@ -14,13 +14,32 @@ import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-@UseGuards(JwtAuthGuard)
 @Controller('students')
 export class StudentsController {
   constructor(
     private readonly studentsService: StudentsService,
   ) {}
 
+  /*
+   * PUBLIC PAYMENT LINK TRACKING
+   */
+
+  @Post(
+    'public/:id/payment-link-click',
+  )
+  trackPaymentLinkClick(
+    @Param('id')
+    id: string,
+  ) {
+    return this.studentsService
+      .trackPaymentLinkClick(id);
+  }
+
+  /*
+   * ADMIN ROUTES
+   */
+
+  @UseGuards(JwtAuthGuard)
   @Post()
   create(
     @Body()
@@ -31,13 +50,13 @@ export class StudentsController {
     );
   }
 
-  
-
+  @UseGuards(JwtAuthGuard)
   @Get()
   findAll() {
     return this.studentsService.findAll();
   }
 
+  @UseGuards(JwtAuthGuard)
   @Get(':id')
   findOne(
     @Param('id')
@@ -46,6 +65,7 @@ export class StudentsController {
     return this.studentsService.findOne(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   update(
     @Param('id')
@@ -60,6 +80,7 @@ export class StudentsController {
     );
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   remove(
     @Param('id')

@@ -544,7 +544,7 @@ export class PaymentsService {
         allowed: false,
 
         reason:
-          `${String(student.feeType) === 'monthly' ? 'Monthly' : 'Partial'} fee plan is already active`,
+          `${String(student.feeType) === 'monthly' ? 'Monthly' : 'Part Payment'} fee plan is already active`,
       };
     }
 
@@ -593,7 +593,7 @@ export class PaymentsService {
     }
     if (!data.feeStartingDate || !data.feeEndingDate) {
       throw new BadRequestException(
-        'Fee starting and ending dates are required for yearly fee setup',
+        'Fee starting and ending dates are required for one-time payment fee setup',
       );
     }
     const feeStartingDate = this.parseFeeDate(
@@ -1154,7 +1154,7 @@ export class PaymentsService {
         !data.feeStartingDate
       ) {
         throw new BadRequestException(
-          'Fee starting date is required for yearly fee setup',
+          'Fee starting date is required for one-time payment fee setup',
         );
       }
 
@@ -1162,7 +1162,7 @@ export class PaymentsService {
         !data.feeEndingDate
       ) {
         throw new BadRequestException(
-          'Fee ending date is required for yearly fee setup',
+          'Fee ending date is required for one-time payment fee setup',
         );
       }
 
@@ -1222,7 +1222,7 @@ export class PaymentsService {
       !feeSettings.partialFeeEnabled
     ) {
       throw new BadRequestException(
-        'Partial fee payment is disabled in settings',
+        'Part Payment fee payment is disabled in settings',
       );
     }
 
@@ -1232,7 +1232,7 @@ export class PaymentsService {
       !feeSettings.yearlyFeeEnabled
     ) {
       throw new BadRequestException(
-        'Yearly fee payment is disabled in settings',
+        'One-Time Payment fee payment is disabled in settings',
       );
     }
 
@@ -1448,7 +1448,7 @@ export class PaymentsService {
 
     if (data.feeType === 'partial') {
       if (!feeSettings.partialFeeEnabled) {
-        throw new BadRequestException('Partial fee payment is disabled in settings');
+        throw new BadRequestException('Part Payment fee payment is disabled in settings');
       }
 
       const recurringCycle = this.getRecurringFeeCycleDates(
@@ -1460,7 +1460,7 @@ export class PaymentsService {
       feeEndingDate = recurringCycle.feeEndingDate;
     } else {
       if (!feeSettings.yearlyFeeEnabled) {
-        throw new BadRequestException('Yearly fee payment is disabled in settings');
+        throw new BadRequestException('One-Time Payment fee payment is disabled in settings');
       }
       if (!data.feeStartingDate || !data.feeEndingDate) {
         throw new BadRequestException(
@@ -1546,7 +1546,7 @@ export class PaymentsService {
       !feeSettings.yearlyFeeEnabled
     ) {
       throw new BadRequestException(
-        'Yearly fee payment is disabled in settings',
+        'One-Time Payment fee payment is disabled in settings',
       );
     }
 
@@ -1723,7 +1723,7 @@ export class PaymentsService {
       !feeSettings.yearlyFeeEnabled
     ) {
       throw new BadRequestException(
-        'Yearly fee payment is disabled in settings',
+        'One-Time Payment fee payment is disabled in settings',
       );
     }
 
@@ -2067,7 +2067,7 @@ export class PaymentsService {
         enteredAmount <= 0
       ) {
         throw new BadRequestException(
-          'Enter a valid partial payment amount',
+          'Enter a valid part payment amount',
         );
       }
 

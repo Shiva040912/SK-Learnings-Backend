@@ -39,6 +39,13 @@ export class NotificationsController {
     return this.notificationsService.sendAllUnpaidReminders();
   }
 
+  @Post('send-selected')
+  sendSelectedReminders(
+    @Body('studentIds') studentIds: string[],
+  ) {
+    return this.notificationsService.sendSelectedReminders(studentIds);
+  }
+
   @Patch('student/:studentId/preferences')
   updateStudentPreferences(
     @Param('studentId') studentId: string,

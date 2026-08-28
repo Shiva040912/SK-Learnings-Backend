@@ -758,6 +758,30 @@ export class NotificationsService {
       failedStudents,
     };
   }
+  async sendSelectedReminders(studentIds: string[]) {
+    const uniqueStudentIds = [...new Set((studentIds || []).filter(Boolean))];
+
+    if (uniqueStudentIds.length === 0) {
+      throw new BadRequestException('Select at least one student');
+    }
+
+    const results = await Promise.allSettled(
+      uniqueStudentIds.map((studentId) => this.sendManualReminder(studentId)),
+    );
+
+    const sent = results.filter((result) => result.status === 'fulfilled').length;
+    const failed = results.length - sent;
+
+    return {
+      message: failed === 0
+        ? `Reminder sent successfully to ${sent} selected student${sent === 1 ? '' : 's'}`
+        : `Reminder process completed. ${sent} sent, ${failed} failed.`,
+      total: uniqueStudentIds.length,
+      sent,
+      failed,
+    };
+  }
+
   async updateStudentPreferences(
     studentId: string,
     preferences: Record<string, unknown>,

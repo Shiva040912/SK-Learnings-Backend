@@ -168,7 +168,7 @@ export class WhatsappService {
         'Monthly',
 
       partial:
-        'Partial',
+        'Part Payment',
 
       yearly:
         'Yearly',

@@ -765,7 +765,7 @@ export class FeeReminderScheduler {
               !student.feeEndingDate
             ) {
               this.logger.warn(
-                `Fee ending date missing for yearly student ${student.studentName}`,
+                `Fee ending date missing for one-time payment student ${student.studentName}`,
               );
 
               continue;
