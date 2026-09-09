@@ -1,10 +1,22 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Patch, Req, UseGuards } from '@nestjs/common';
 
 import { SettingsService } from './settings.service';
 import { UpdateSettingsDto } from './dto/update-setting.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PagePermissionGuard } from '../auth/page-permission.guard';
 import { RequirePage } from '../auth/page-permission.decorator';
+import { GranularPermissionsMap } from '../auth/student-permission-keys';
+import {
+  assertSettingsWriteAllowed,
+  redactSettingsForUser,
+} from './settings-field-redaction.util';
+
+interface RequestWithUser {
+  user?: {
+    role: string;
+    granularPermissions?: GranularPermissionsMap;
+  };
+}
 
 @Controller('settings')
 @UseGuards(JwtAuthGuard, PagePermissionGuard)
@@ -13,16 +25,44 @@ export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
   @Get()
-  getSettings() {
-    return this.settingsService.getSettings();
+  async getSettings(@Req() request: RequestWithUser) {
+    const settings = await this.settingsService.getSettings();
+
+    return redactSettingsForUser(
+      (settings as unknown as { toObject: () => Record<string, unknown> })
+        .toObject(),
+      request.user,
+    );
   }
 
   @Patch()
-  updateSettings(
+  async updateSettings(
     @Body()
     updateSettingsDto: UpdateSettingsDto,
+
+    @Req()
+    request: RequestWithUser,
   ) {
-    return this.settingsService.updateSettings(updateSettingsDto);
+    assertSettingsWriteAllowed(
+      updateSettingsDto as unknown as Record<string, unknown>,
+      request.user,
+    );
+
+    const result = await this.settingsService.updateSettings(
+      updateSettingsDto,
+    );
+
+    return {
+      ...result,
+      settings: redactSettingsForUser(
+        (
+          result.settings as unknown as {
+            toObject: () => Record<string, unknown>;
+          }
+        ).toObject(),
+        request.user,
+      ),
+    };
   }
 
   // Also reachable via the Payments page, which needs the fee-type toggles

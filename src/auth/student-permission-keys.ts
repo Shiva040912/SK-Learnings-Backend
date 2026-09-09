@@ -24,6 +24,18 @@ import {
   createDefaultNotificationPermissions,
   normalizeNotificationPermissions,
 } from './notification-permission-keys';
+import {
+  InvoicePermissions,
+  InvoicePermissionsInput,
+  createDefaultInvoicePermissions,
+  normalizeInvoicePermissions,
+} from './invoice-permission-keys';
+import {
+  SettingsPermissions,
+  SettingsPermissionsInput,
+  createDefaultSettingsPermissions,
+  normalizeSettingsPermissions,
+} from './settings-permission-keys';
 
 export const STUDENT_ACTION_KEYS = [
   'view',
@@ -71,6 +83,8 @@ export interface GranularPermissionsMap {
   students: StudentPermissions;
   payments: PaymentPermissions;
   notifications: NotificationPermissions;
+  invoices: InvoicePermissions;
+  settings: SettingsPermissions;
 }
 
 // Actions are deny-by-default — an Admin has to explicitly grant each one.
@@ -98,6 +112,8 @@ export const createDefaultGranularPermissions = (): GranularPermissionsMap => ({
   students: createDefaultStudentPermissions(),
   payments: createDefaultPaymentPermissions(),
   notifications: createDefaultNotificationPermissions(),
+  invoices: createDefaultInvoicePermissions(),
+  settings: createDefaultSettingsPermissions(),
 });
 
 // Bulk Upload is never an independent permission — it is always exactly
@@ -166,11 +182,15 @@ export const normalizeGranularPermissions = (
     students?: StudentPermissionsInput | null;
     payments?: PaymentPermissionsInput | null;
     notifications?: NotificationPermissionsInput | null;
+    invoices?: InvoicePermissionsInput | null;
+    settings?: SettingsPermissionsInput | null;
   } | null,
 ): GranularPermissionsMap => ({
   students: normalizeStudentPermissions(permissions?.students),
   payments: normalizePaymentPermissions(permissions?.payments),
   notifications: normalizeNotificationPermissions(permissions?.notifications),
+  invoices: normalizeInvoicePermissions(permissions?.invoices),
+  settings: normalizeSettingsPermissions(permissions?.settings),
 });
 
 // True only if the action is granted AND (for bulkUpload specifically) Add

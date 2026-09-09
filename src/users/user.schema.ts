@@ -14,6 +14,11 @@ import {
   createDefaultNotificationActions,
   createDefaultNotificationFields,
 } from '../auth/notification-permission-keys';
+import {
+  createDefaultInvoiceActions,
+  createDefaultInvoiceFields,
+} from '../auth/invoice-permission-keys';
+import { createDefaultSettingsActions } from '../auth/settings-permission-keys';
 
 export type UserDocument = HydratedDocument<User>;
 
@@ -380,9 +385,142 @@ export const NotificationPermissionsSchema = SchemaFactory.createForClass(
   NotificationPermissions,
 );
 
-// Granular (per-page, beyond-just-access) permissions. Students, Payments
-// and Notifications are populated — Invoices gets its own props here in a
-// later phase, each independent of the others.
+@Schema({
+  _id: false,
+})
+export class InvoiceActions {
+  @Prop({ default: false })
+  search!: boolean;
+
+  @Prop({ default: false })
+  filter!: boolean;
+
+  @Prop({ default: false })
+  viewInvoice!: boolean;
+
+  @Prop({ default: false })
+  downloadInvoice!: boolean;
+
+  @Prop({ default: false })
+  printInvoice!: boolean;
+
+  @Prop({ default: false })
+  clearInvoices!: boolean;
+}
+
+export const InvoiceActionsSchema = SchemaFactory.createForClass(InvoiceActions);
+
+// One flag per actual invoice/student data field — controls that field
+// everywhere it is displayed (receipt-board row and opened invoice document
+// alike). There is no separate "columns" vs "document" schema.
+@Schema({
+  _id: false,
+})
+export class InvoiceFields {
+  @Prop({ default: true })
+  studentName!: boolean;
+
+  @Prop({ default: true })
+  rollNo!: boolean;
+
+  @Prop({ default: true })
+  course!: boolean;
+
+  @Prop({ default: true })
+  batch!: boolean;
+
+  @Prop({ default: true })
+  parentName!: boolean;
+
+  @Prop({ default: true })
+  phone!: boolean;
+
+  @Prop({ default: true })
+  invoiceNumber!: boolean;
+
+  @Prop({ default: true })
+  invoiceDate!: boolean;
+
+  @Prop({ default: true })
+  dueDate!: boolean;
+
+  @Prop({ default: true })
+  totalAmount!: boolean;
+
+  @Prop({ default: true })
+  paidAmount!: boolean;
+
+  @Prop({ default: true })
+  pendingAmount!: boolean;
+
+  @Prop({ default: true })
+  paymentStatus!: boolean;
+
+  @Prop({ default: true })
+  paymentMethod!: boolean;
+}
+
+export const InvoiceFieldsSchema = SchemaFactory.createForClass(InvoiceFields);
+
+@Schema({
+  _id: false,
+})
+export class InvoicePermissions {
+  @Prop({
+    type: InvoiceActionsSchema,
+    default: () => createDefaultInvoiceActions(),
+  })
+  actions!: InvoiceActions;
+
+  @Prop({
+    type: InvoiceFieldsSchema,
+    default: () => createDefaultInvoiceFields(),
+  })
+  fields!: InvoiceFields;
+}
+
+export const InvoicePermissionsSchema =
+  SchemaFactory.createForClass(InvoicePermissions);
+
+// Settings has no per-record table, so it has no Fields layer — each tab is
+// one coherent admin-configuration form gated as a single section action
+// (view + save together). See settings-permission-keys.ts for why.
+@Schema({
+  _id: false,
+})
+export class SettingsActions {
+  @Prop({ default: false })
+  profileSettings!: boolean;
+
+  @Prop({ default: false })
+  feeSettings!: boolean;
+
+  @Prop({ default: false })
+  notificationSettings!: boolean;
+
+  @Prop({ default: false })
+  invoiceSettings!: boolean;
+}
+
+export const SettingsActionsSchema =
+  SchemaFactory.createForClass(SettingsActions);
+
+@Schema({
+  _id: false,
+})
+export class SettingsPermissions {
+  @Prop({
+    type: SettingsActionsSchema,
+    default: () => createDefaultSettingsActions(),
+  })
+  actions!: SettingsActions;
+}
+
+export const SettingsPermissionsSchema =
+  SchemaFactory.createForClass(SettingsPermissions);
+
+// Granular (per-page, beyond-just-access) permissions — one independent
+// sub-document per page.
 @Schema({
   _id: false,
 })
@@ -404,6 +542,18 @@ export class GranularPermissions {
     default: () => ({}),
   })
   notifications!: NotificationPermissions;
+
+  @Prop({
+    type: InvoicePermissionsSchema,
+    default: () => ({}),
+  })
+  invoices!: InvoicePermissions;
+
+  @Prop({
+    type: SettingsPermissionsSchema,
+    default: () => ({}),
+  })
+  settings!: SettingsPermissions;
 }
 
 export const GranularPermissionsSchema =

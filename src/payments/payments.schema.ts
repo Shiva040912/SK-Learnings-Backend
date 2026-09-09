@@ -99,6 +99,35 @@ export class Payment {
     default: 'paid',
   })
   paymentStatus!: 'paid';
+
+  /*
+   * Set only when this payment was recorded off a student-uploaded
+   * PaymentProof (screenshot-based collection). Null for a direct Collect
+   * Payment with no proof involved.
+   */
+  @Prop({
+    type: String,
+    default: null,
+  })
+  screenshotImage?: string | null;
+
+  @Prop({
+    type: Types.ObjectId,
+    ref: 'PaymentProof',
+    default: null,
+  })
+  paymentProofId?: Types.ObjectId | null;
+
+  /*
+   * Soft-delete flag for individual history-record deletion. Deleted
+   * records are excluded from totals/history views but the document is
+   * kept (screenshotImage is cleared) rather than hard-removed.
+   */
+  @Prop({
+    type: Boolean,
+    default: false,
+  })
+  deleted?: boolean;
 }
 
 export const PaymentSchema =

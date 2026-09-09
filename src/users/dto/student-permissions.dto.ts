@@ -3,6 +3,8 @@ import { IsBoolean, IsOptional, ValidateNested } from 'class-validator';
 
 import { PaymentPermissionsDto } from './payment-permissions.dto';
 import { NotificationPermissionsDto } from './notification-permissions.dto';
+import { InvoicePermissionsDto } from './invoice-permissions.dto';
+import { SettingsPermissionsDto } from './settings-permissions.dto';
 
 export class StudentActionsDto {
   @IsOptional()
@@ -128,4 +130,14 @@ export class GranularPermissionsDto {
   @ValidateNested()
   @Type(() => NotificationPermissionsDto)
   notifications?: NotificationPermissionsDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => InvoicePermissionsDto)
+  invoices?: InvoicePermissionsDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SettingsPermissionsDto)
+  settings?: SettingsPermissionsDto;
 }

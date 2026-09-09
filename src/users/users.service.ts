@@ -30,6 +30,11 @@ import {
   normalizeNotificationActions,
   normalizeNotificationFields,
 } from '../auth/notification-permission-keys';
+import {
+  normalizeInvoiceActions,
+  normalizeInvoiceFields,
+} from '../auth/invoice-permission-keys';
+import { normalizeSettingsActions } from '../auth/settings-permission-keys';
 
 @Injectable()
 export class UsersService {
@@ -368,11 +373,35 @@ export class UsersService {
             ...updateUserDto.granularPermissions.notifications?.fields,
           },
         },
+        invoices: {
+          actions: {
+            ...normalizeInvoiceActions(
+              user.granularPermissions?.invoices?.actions,
+            ),
+            ...updateUserDto.granularPermissions.invoices?.actions,
+          },
+          fields: {
+            ...normalizeInvoiceFields(
+              user.granularPermissions?.invoices?.fields,
+            ),
+            ...updateUserDto.granularPermissions.invoices?.fields,
+          },
+        },
+        settings: {
+          actions: {
+            ...normalizeSettingsActions(
+              user.granularPermissions?.settings?.actions,
+            ),
+            ...updateUserDto.granularPermissions.settings?.actions,
+          },
+        },
       });
 
       user.granularPermissions.students = merged.students;
       user.granularPermissions.payments = merged.payments;
       user.granularPermissions.notifications = merged.notifications;
+      user.granularPermissions.invoices = merged.invoices;
+      user.granularPermissions.settings = merged.settings;
     }
 
     if (updateUserDto.password) {

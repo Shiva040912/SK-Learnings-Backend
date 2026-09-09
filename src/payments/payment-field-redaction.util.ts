@@ -2,7 +2,11 @@ import {
   GranularPermissionsMap,
   normalizeGranularPermissions,
 } from '../auth/student-permission-keys';
-import { PAYMENT_FIELD_KEYS } from '../auth/payment-permission-keys';
+import {
+  PAYMENT_FIELD_KEYS,
+  hasFeeDetailsAccess,
+  resolveEffectivePaymentFields,
+} from '../auth/payment-permission-keys';
 
 interface RequestUser {
   role: string;
@@ -34,10 +38,16 @@ export function redactStudentForPaymentsUser<T extends Record<string, unknown>>(
     user.granularPermissions,
   ).payments;
 
+  // "Fee Details" is a master switch on top of the individual field flags —
+  // this is the single place that master-AND-individual logic is applied,
+  // so every fee/financial field below (and anything piggybacking on one,
+  // like feeDueDay/feeDueDate on feeEndingDate) is automatically covered.
+  const effectiveFields = resolveEffectivePaymentFields(permissions.fields);
+
   const plain = toPlainObject(student);
 
   for (const field of PAYMENT_FIELD_KEYS) {
-    if (permissions.fields[field] !== true && field in plain) {
+    if (effectiveFields[field] !== true && field in plain) {
       delete plain[field];
     }
   }
@@ -45,7 +55,7 @@ export function redactStudentForPaymentsUser<T extends Record<string, unknown>>(
   // feeDueDay/feeDueDate replaced feeEndingDate as the source of the
   // student's due-date info — they ride on the same "feeEndingDate" Fields
   // permission flag (now labeled "Due Date") rather than needing their own.
-  if (permissions.fields.feeEndingDate !== true) {
+  if (effectiveFields.feeEndingDate !== true) {
     delete plain.feeDueDay;
     delete plain.feeDueDate;
   }
@@ -82,11 +92,25 @@ export function redactPaymentForUser<T extends Record<string, unknown>>(
 
   if (permissions.fields.paymentMethod !== true) {
     delete plain.paymentMethod;
+
+    // screenshotImage/paymentProofId ride on the paymentMethod flag rather
+    // than getting their own — same reasoning as feeDueDay/feeDueDate riding
+    // on feeEndingDate above: both describe "how this specific payment was
+    // made", and the screenshot is at least as sensitive as the method.
+    delete plain.screenshotImage;
+    delete plain.paymentProofId;
   }
 
   if (permissions.fields.paymentDate !== true) {
     delete plain.paymentDate;
     delete plain.createdAt;
+  }
+
+  // Transaction amount has no dedicated field toggle of its own — it is
+  // purely gated by the Fee Details master switch (see FEE_DETAIL_FIELD_KEYS
+  // for why: it's a fee/financial figure, not per-field-controllable data).
+  if (!hasFeeDetailsAccess(permissions)) {
+    delete plain.amount;
   }
 
   return plain as T;
@@ -97,4 +121,38 @@ export function redactPaymentListForUser<T extends Record<string, unknown>>(
   user: RequestUser | undefined,
 ): T[] {
   return payments.map((payment) => redactPaymentForUser(payment, user));
+}
+
+// PaymentProof responses (the pending-proofs list and the single-proof
+// admin popup) carry the student's claimed amount — also purely Fee
+// Details-gated, same reasoning as Payment.amount above. The screenshot
+// itself is left alone: it is proof/evidence content, not a fee/financial
+// figure, so it stays governed by its own existing (paymentMethod-linked)
+// gating wherever that already applies.
+export function redactPaymentProofForUser<T extends Record<string, unknown>>(
+  proof: T,
+  user: RequestUser | undefined,
+): T {
+  if (!user || user.role === 'admin') {
+    return proof;
+  }
+
+  const permissions = normalizeGranularPermissions(
+    user.granularPermissions,
+  ).payments;
+
+  if (hasFeeDetailsAccess(permissions)) {
+    return proof;
+  }
+
+  const plain = toPlainObject(proof);
+  delete plain.amountClaimed;
+
+  return plain as T;
+}
+
+export function redactPaymentProofListForUser<
+  T extends Record<string, unknown>,
+>(proofs: T[], user: RequestUser | undefined): T[] {
+  return proofs.map((proof) => redactPaymentProofForUser(proof, user));
 }

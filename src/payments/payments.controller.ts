@@ -26,6 +26,9 @@ import { SubmitPaymentProofDto } from './dto/submit-payment-proof.dto';
 import {
   redactPaymentForUser,
   redactPaymentListForUser,
+  redactPaymentProofForUser,
+  redactPaymentProofListForUser,
+  redactStudentForPaymentsUser,
 } from './payment-field-redaction.util';
 
 interface RequestWithUser {
@@ -164,19 +167,29 @@ export class PaymentsController {
   @RequirePage('payments')
   @RequirePaymentAction('collectPayment', 'addPartPayment')
   @Get('proofs/pending')
-  getPendingPaymentProofs() {
-    return this.paymentsService.getPendingPaymentProofs();
+  async getPendingPaymentProofs(
+    @Req()
+    request: RequestWithUser,
+  ) {
+    const proofs = await this.paymentsService.getPendingPaymentProofs();
+
+    return redactPaymentProofListForUser(proofs, request.user);
   }
 
   @UseGuards(JwtAuthGuard, PagePermissionGuard, PaymentActionGuard)
   @RequirePage('payments')
   @RequirePaymentAction('collectPayment', 'addPartPayment')
   @Get('student/:studentId/proof')
-  getStudentPaymentProof(
+  async getStudentPaymentProof(
     @Param('studentId')
     studentId: string,
+
+    @Req()
+    request: RequestWithUser,
   ) {
-    return this.paymentsService.getStudentPaymentProof(studentId);
+    const proof = await this.paymentsService.getStudentPaymentProof(studentId);
+
+    return redactPaymentProofForUser(proof, request.user);
   }
 
   @UseGuards(JwtAuthGuard, PagePermissionGuard, PaymentActionGuard)
@@ -197,17 +210,34 @@ export class PaymentsController {
   @RequirePage('payments')
   @RequirePaymentAction('collectPayment', 'addPartPayment')
   @Post('student/:studentId/collect')
-  collectStudentPayment(
+  async collectStudentPayment(
     @Param('studentId')
     studentId: string,
 
     @Body()
     collectStudentPaymentDto: CollectStudentPaymentDto,
+
+    @Req()
+    request: RequestWithUser,
   ) {
-    return this.paymentsService.collectStudentPayment(
+    const result = await this.paymentsService.collectStudentPayment(
       studentId,
       collectStudentPaymentDto,
     );
+
+    // The response echoes the student's post-collection totalFee/paidAmount
+    // /pendingAmount/feeType — genuine stored data, not just the admin's own
+    // submitted input — so it must go through the same Fields/Fee Details
+    // redaction as every other read of this student, closing the same
+    // DevTools/API-inspection bypass the GET endpoints are already closed
+    // against.
+    return {
+      ...result,
+      student: redactStudentForPaymentsUser(
+        result.student as unknown as Record<string, unknown>,
+        request.user,
+      ),
+    };
   }
 
   /*
@@ -223,6 +253,21 @@ export class PaymentsController {
     studentId: string,
   ) {
     return this.paymentsService.clearStudentPaymentHistory(studentId);
+  }
+
+  /*
+   * Deletes ONE history record and recalculates Paid/Pending/Status —
+   * unlike the bulk clear above, which deliberately leaves totals alone.
+   */
+  @UseGuards(JwtAuthGuard, PagePermissionGuard, PaymentActionGuard)
+  @RequirePage('payments')
+  @RequirePaymentAction('clearPaymentHistory')
+  @Delete('history/:paymentId')
+  deletePaymentHistoryRecord(
+    @Param('paymentId')
+    paymentId: string,
+  ) {
+    return this.paymentsService.deletePaymentHistoryRecord(paymentId);
   }
 
   @UseGuards(JwtAuthGuard, PagePermissionGuard, PaymentActionGuard)

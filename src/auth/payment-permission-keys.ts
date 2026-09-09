@@ -36,6 +36,7 @@ export const PAYMENT_FIELD_KEYS = [
   'rollNo',
   'course',
   'batch',
+  'feeDetails',
   'totalFee',
   'feeType',
   'feeStartingDate',
@@ -50,6 +51,27 @@ export const PAYMENT_FIELD_KEYS = [
 
 export type PaymentFieldKey = (typeof PAYMENT_FIELD_KEYS)[number];
 export type PaymentFieldsMap = Record<PaymentFieldKey, boolean>;
+
+// The subset of fields that are genuinely fee/financial information —
+// gated by the "Fee Details" master switch (see resolveEffectivePaymentFields
+// below) on top of their own individual flag. studentName/rollNo/course/
+// batch/paymentStatus/paymentMethod/paymentDate are NOT fee/financial
+// amounts or configuration, so they stay independently controlled and are
+// deliberately excluded here. feeSetupCompleted is ALSO deliberately
+// excluded even though it lives under "Fee Setup" conceptually: it is a
+// plain readiness flag (no amount/date disclosed), and the frontend uses
+// its raw boolean value to decide whether Collect Payment, Reverse/Reset,
+// Edit Fee, Assign Next Fee and View History are even reachable for a
+// student — stripping it made every one of those go dark for any non-admin
+// user with Fee Details off, regardless of their actual action permissions.
+export const FEE_DETAIL_FIELD_KEYS: PaymentFieldKey[] = [
+  'totalFee',
+  'feeType',
+  'feeStartingDate',
+  'feeEndingDate',
+  'paidAmount',
+  'pendingAmount',
+];
 
 // Global UPI receiver configuration — not per-student data, so it is kept as
 // its own list rather than folded into PAYMENT_FIELD_KEYS.
@@ -172,4 +194,37 @@ export const hasPaymentAction = (
   if (!permissions) return false;
 
   return permissions.actions?.[action] === true;
+};
+
+// "Fee Details" is a master financial-information visibility switch: when
+// it is off, none of FEE_DETAIL_FIELD_KEYS may be shown regardless of their
+// own individual flag (master AND individual, never OR). Every consumer
+// that decides what fee/financial data to actually return or render should
+// read fields through this instead of the raw stored map, so the master
+// switch can never be bypassed by an individually-enabled field — this is
+// the single reusable answer to "can this user see fee details on
+// Payments?", reused by both the field-redaction util and anywhere else on
+// the backend that returns a fee amount/date/config value.
+export const resolveEffectivePaymentFields = (
+  fields: PaymentFieldsMap,
+): PaymentFieldsMap => {
+  if (fields.feeDetails === true) {
+    return fields;
+  }
+
+  const effective = { ...fields };
+
+  for (const key of FEE_DETAIL_FIELD_KEYS) {
+    effective[key] = false;
+  }
+
+  return effective;
+};
+
+export const hasFeeDetailsAccess = (
+  permissions: PaymentPermissions | undefined | null,
+): boolean => {
+  if (!permissions) return false;
+
+  return permissions.fields?.feeDetails === true;
 };

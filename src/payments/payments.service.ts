@@ -1050,7 +1050,9 @@ export class PaymentsService {
 
   async getPayments() {
     return this.paymentModel
-      .find()
+      .find({
+        deleted: { $ne: true },
+      })
       .sort({
         paymentDate: -1,
       });
@@ -1949,6 +1951,14 @@ export class PaymentsService {
           student.feeType,
 
         installmentNumber,
+
+        screenshotImage:
+          claimedProof?.imageData ??
+          null,
+
+        paymentProofId:
+          claimedProof?._id ??
+          null,
       });
 
     if (
@@ -2212,6 +2222,10 @@ export class PaymentsService {
 
       installmentNumber?:
         number;
+
+      screenshotImage?: string | null;
+
+      paymentProofId?: Types.ObjectId | null;
     },
   ) {
     const setting =
@@ -2270,6 +2284,14 @@ export class PaymentsService {
 
         paymentDate:
           new Date(),
+
+        screenshotImage:
+          data.screenshotImage ??
+          null,
+
+        paymentProofId:
+          data.paymentProofId ??
+          null,
       });
 
     return payment.save();
@@ -2338,6 +2360,90 @@ export class PaymentsService {
 
       studentId:
         student._id,
+    };
+  }
+
+  /*
+   * ==================================================
+   * DELETE ONE PAYMENT HISTORY RECORD
+   * ==================================================
+   * Unlike clearStudentPaymentHistory (bulk wipe, totals untouched
+   * deliberately), deleting a single record is a correction to the
+   * transaction log — Paid/Pending/Status must be recalculated from the
+   * remaining non-deleted records afterward.
+   */
+  async deletePaymentHistoryRecord(paymentId: string) {
+    const payment =
+      await this.paymentModel.findById(paymentId);
+
+    if (!payment) {
+      throw new NotFoundException('Payment history record not found');
+    }
+
+    if (payment.deleted) {
+      throw new BadRequestException(
+        'This payment history record is already deleted',
+      );
+    }
+
+    const student =
+      await this.studentModel.findById(payment.studentId);
+
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
+    if (student.feeType === 'monthly') {
+      throw new BadRequestException(
+        'Deleting individual history records is not supported for the monthly fee type',
+      );
+    }
+
+    payment.deleted = true;
+    payment.screenshotImage = null;
+    await payment.save();
+
+    // Payment.studentId has always been stored as a plain string (not an
+    // ObjectId) by createPayment() — match that existing storage shape
+    // rather than an ObjectId, which would never match here.
+    const remaining = await this.paymentModel.find({
+      studentId: student._id.toString(),
+      deleted: { $ne: true },
+    });
+
+    const totalFee = this.roundMoney(Number(student.totalFee || 0));
+
+    const newPaidAmount = this.roundMoney(
+      remaining.reduce((sum, record) => sum + Number(record.amount || 0), 0),
+    );
+
+    const cappedPaidAmount = Math.min(newPaidAmount, totalFee);
+
+    const newPendingAmount = this.roundMoney(
+      Math.max(0, totalFee - cappedPaidAmount),
+    );
+
+    student.paidAmount = cappedPaidAmount;
+    student.pendingAmount = newPendingAmount;
+    student.paymentStatus =
+      cappedPaidAmount <= 0
+        ? 'unpaid'
+        : newPendingAmount <= 0
+          ? 'paid'
+          : 'partial';
+
+    await student.save();
+
+    return {
+      message: 'Payment history record deleted successfully',
+
+      student: {
+        id: student._id,
+        totalFee: student.totalFee,
+        paidAmount: student.paidAmount,
+        pendingAmount: student.pendingAmount,
+        paymentStatus: student.paymentStatus,
+      },
     };
   }
 
