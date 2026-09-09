@@ -2,7 +2,6 @@ import {
   Body,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
   Param,
   Patch,
@@ -19,32 +18,21 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PagePermissionGuard } from '../auth/page-permission.guard';
+import { RequirePage } from '../auth/page-permission.decorator';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
-  constructor(
-    private readonly usersService:
-      UsersService,
-  ) {}
+  constructor(private readonly usersService: UsersService) {}
 
-  private ensureAdministrator(
-    role?: string,
-  ) {
-    if (role !== 'admin') {
-      throw new ForbiddenException(
-        'Administrator access required',
-      );
-    }
-  }
+  // me/profile and me/password are every user's own account settings — not
+  // the admin-facing Users page — so they stay accessible to any logged-in
+  // user regardless of their "users" page permission.
 
   @Get('me/profile')
-  getMyProfile(
-    @Req() req: any,
-  ) {
-    return this.usersService.getMyProfile(
-      req.user.userId,
-    );
+  getMyProfile(@Req() req: any) {
+    return this.usersService.getMyProfile(req.user.userId);
   }
 
   @Patch('me/profile')
@@ -52,13 +40,9 @@ export class UsersController {
     @Req() req: any,
 
     @Body()
-    updateProfileDto:
-      UpdateProfileDto,
+    updateProfileDto: UpdateProfileDto,
   ) {
-    return this.usersService.updateMyProfile(
-      req.user.userId,
-      updateProfileDto,
-    );
+    return this.usersService.updateMyProfile(req.user.userId, updateProfileDto);
   }
 
   @Patch('me/password')
@@ -66,8 +50,7 @@ export class UsersController {
     @Req() req: any,
 
     @Body()
-    changePasswordDto:
-      ChangePasswordDto,
+    changePasswordDto: ChangePasswordDto,
   ) {
     return this.usersService.changeMyPassword(
       req.user.userId,
@@ -76,83 +59,52 @@ export class UsersController {
   }
 
   @Post('create-admin')
+  @UseGuards(PagePermissionGuard)
+  @RequirePage('users')
   createAdmin(
-    @Req() req: any,
-
     @Body()
-    createUserDto:
-      CreateUserDto,
+    createUserDto: CreateUserDto,
   ) {
-    this.ensureAdministrator(
-      req.user?.role,
-    );
-
-    return this.usersService.createUser(
-      createUserDto,
-    );
+    return this.usersService.createUser(createUserDto);
   }
 
   @Get()
-  getAllUsers(
-    @Req() req: any,
-  ) {
-    this.ensureAdministrator(
-      req.user?.role,
-    );
-
+  @UseGuards(PagePermissionGuard)
+  @RequirePage('users')
+  getAllUsers() {
     return this.usersService.getAllUsers();
   }
 
   @Get(':id')
+  @UseGuards(PagePermissionGuard)
+  @RequirePage('users')
   getUserById(
-    @Req() req: any,
-
     @Param('id')
     id: string,
   ) {
-    this.ensureAdministrator(
-      req.user?.role,
-    );
-
-    return this.usersService.getUserById(
-      id,
-    );
+    return this.usersService.getUserById(id);
   }
 
   @Patch(':id')
+  @UseGuards(PagePermissionGuard)
+  @RequirePage('users')
   updateUser(
-    @Req() req: any,
-
     @Param('id')
     id: string,
 
     @Body()
-    updateUserDto:
-      UpdateUserDto,
+    updateUserDto: UpdateUserDto,
   ) {
-    this.ensureAdministrator(
-      req.user?.role,
-    );
-
-    return this.usersService.updateUser(
-      id,
-      updateUserDto,
-    );
+    return this.usersService.updateUser(id, updateUserDto);
   }
 
   @Delete(':id')
+  @UseGuards(PagePermissionGuard)
+  @RequirePage('users')
   deleteUser(
-    @Req() req: any,
-
     @Param('id')
     id: string,
   ) {
-    this.ensureAdministrator(
-      req.user?.role,
-    );
-
-    return this.usersService.deleteUser(
-      id,
-    );
+    return this.usersService.deleteUser(id);
   }
 }

@@ -8,6 +8,8 @@ async function bootstrap() {
   const app =
     await NestFactory.create(AppModule);
 
+  app.enableShutdownHooks();
+
   app.use(
     json({
       limit: '10mb',
@@ -62,9 +64,30 @@ async function bootstrap() {
     }),
   );
 
-  await app.listen(
-    process.env.PORT || 3000,
-  );
+  const port = process.env.PORT || 3000;
+
+  try {
+    await app.listen(port);
+  } catch (error) {
+    if (
+      (error as NodeJS.ErrnoException)?.code === 'EADDRINUSE'
+    ) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `\nPort ${port} is already in use by another process.\n` +
+          'This is almost always a previous backend instance (or another app) ' +
+          'still running from an earlier session that was never stopped.\n' +
+          'Stop that process first, then run this command again. ' +
+          'This app will not kill it automatically.\n' +
+          '  Windows (PowerShell): Get-NetTCPConnection -LocalPort ' +
+          `${port} -State Listen | Select-Object OwningProcess\n` +
+          '                        Stop-Process -Id <OwningProcess>\n',
+      );
+      process.exit(1);
+    }
+
+    throw error;
+  }
 }
 
 bootstrap();

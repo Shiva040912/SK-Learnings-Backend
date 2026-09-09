@@ -140,17 +140,52 @@ export class Student {
   })
   feeSetupSource?: 'individual' | 'common' | 'course';
 
+  /*
+   * Internal anchor date for the current fee cycle (auto-set to the date
+   * the cycle began — not an admin-facing input). Deprecated for display:
+   * kept only so historical records already showing this stay intact.
+   */
   @Prop({
     type: Date,
     default: null,
   })
   feeStartingDate?: Date;
 
+  /*
+   * Deprecated — replaced by feeDueDay/feeDueDate. Kept read-only for
+   * historical records created before the recurring Due Date model.
+   */
   @Prop({
     type: Date,
     default: null,
   })
   feeEndingDate?: Date;
+
+  /*
+   * The recurring monthly Due Day (1-31) an admin configures at fee setup —
+   * the actual rule, not a one-time date. Months without this day use
+   * their own last valid day (Due Day 31 -> Feb 28/29).
+   */
+  @Prop({
+    default: null,
+    min: 1,
+    max: 31,
+  })
+  feeDueDay?: number;
+
+  /*
+   * The computed due date for the CURRENT unpaid cycle, derived from
+   * feeDueDay + feeStartingDate. Recomputed only when a cycle begins
+   * (fee setup / edit / next cycle) — never advanced by a background job —
+   * so once it's in the past it stays in the past for as long as the
+   * balance remains pending, which is what keeps a missed payment flagged
+   * overdue continuously instead of resetting every month.
+   */
+  @Prop({
+    type: Date,
+    default: null,
+  })
+  feeDueDate?: Date;
 
   @Prop({
     default: false,
@@ -249,5 +284,5 @@ StudentSchema.index({
 });
 
 StudentSchema.index({
-  feeEndingDate: 1,
+  feeDueDate: 1,
 });

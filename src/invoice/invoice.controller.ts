@@ -1,27 +1,18 @@
-import {
-  Controller,
-  Delete,
-  Get,
-  Param,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Delete, Get, Param, Res, UseGuards } from '@nestjs/common';
 
-import type {
-  Response,
-} from 'express';
+import type { Response } from 'express';
 
 import { InvoiceService } from './invoice.service';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { PagePermissionGuard } from '../auth/page-permission.guard';
+import { RequirePage } from '../auth/page-permission.decorator';
 
 @Controller('invoices')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PagePermissionGuard)
+@RequirePage('invoices')
 export class InvoiceController {
-  constructor(
-    private readonly invoiceService:
-      InvoiceService,
-  ) {}
+  constructor(private readonly invoiceService: InvoiceService) {}
 
   @Get()
   getInvoices() {
@@ -33,9 +24,7 @@ export class InvoiceController {
     @Param('studentId')
     studentId: string,
   ) {
-    return this.invoiceService.getStudentInvoices(
-      studentId,
-    );
+    return this.invoiceService.getStudentInvoices(studentId);
   }
 
   @Get('number/:invoiceNumber')
@@ -43,9 +32,7 @@ export class InvoiceController {
     @Param('invoiceNumber')
     invoiceNumber: string,
   ) {
-    return this.invoiceService.getInvoiceByNumber(
-      invoiceNumber,
-    );
+    return this.invoiceService.getInvoiceByNumber(invoiceNumber);
   }
 
   @Get(':id/pdf')
@@ -54,33 +41,22 @@ export class InvoiceController {
     id: string,
 
     @Res()
-    response:
-      Response,
+    response: Response,
   ) {
-    const invoice =
-      await this.invoiceService.getInvoiceById(
-        id,
-      );
+    const invoice = await this.invoiceService.getInvoiceById(id);
 
     const pdfBuffer =
-      await this.invoiceService.generateInvoicePdfByDocument(
-        invoice,
-      );
+      await this.invoiceService.generateInvoicePdfByDocument(invoice);
 
     response.set({
-      'Content-Type':
-        'application/pdf',
+      'Content-Type': 'application/pdf',
 
-      'Content-Disposition':
-        `inline; filename="${invoice.invoiceNumber}.pdf"`,
+      'Content-Disposition': `inline; filename="${invoice.invoiceNumber}.pdf"`,
 
-      'Content-Length':
-        pdfBuffer.length,
+      'Content-Length': pdfBuffer.length,
     });
 
-    response.end(
-      pdfBuffer,
-    );
+    response.end(pdfBuffer);
   }
 
   @Get(':id')
@@ -88,9 +64,7 @@ export class InvoiceController {
     @Param('id')
     id: string,
   ) {
-    return this.invoiceService.getInvoiceById(
-      id,
-    );
+    return this.invoiceService.getInvoiceById(id);
   }
 
   @Delete('clear')

@@ -60,32 +60,6 @@ export class InvoicePdfService {
     );
   }
 
-  private formatFeeType(
-    value:
-      | string
-      | undefined,
-  ) {
-    const labels:
-      Record<
-        string,
-        string
-      > = {
-        monthly:
-          'Monthly',
-
-        partial:
-          'Part Payment',
-
-        yearly:
-          'Yearly',
-      };
-
-    return value
-      ? labels[value] ||
-          value
-      : '-';
-  }
-
   private formatPaymentMethod(
     value:
       | string
@@ -289,10 +263,7 @@ export class InvoicePdfService {
             fee.selectedMonths ||
             '-'
           } monthly installments`
-        : fee.feeType ===
-            'partial'
-          ? 'Flexible part payments'
-          : 'Full fee payment';
+        : 'Any amount accepted until fully paid';
 
     const statusClass =
       isReceipt
@@ -496,14 +467,14 @@ export class InvoicePdfService {
         : '';
 
     const partialHistoryHtml =
-      fee.feeType ===
-        'partial' &&
+      fee.feeType !==
+        'monthly' &&
       paymentHistory.length >
         0
         ? `
           <section class="installment-section">
             <div class="section-title">
-              PART PAYMENT HISTORY
+              PAYMENT HISTORY
             </div>
 
             <div class="installment-table">
@@ -1117,7 +1088,6 @@ export class InvoicePdfService {
 
       grid-template-columns:
         2fr
-        0.9fr
         0.9fr
         0.9fr
         0.9fr;
@@ -2214,10 +2184,6 @@ export class InvoicePdfService {
           </div>
 
           <div>
-            Fee Type
-          </div>
-
-          <div>
             Total
           </div>
 
@@ -2247,14 +2213,6 @@ export class InvoicePdfService {
               )}
             </span>
 
-          </div>
-
-          <div>
-            ${this.escapeHtml(
-              this.formatFeeType(
-                fee.feeType,
-              ),
-            )}
           </div>
 
           <div>

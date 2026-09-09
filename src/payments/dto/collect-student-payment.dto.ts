@@ -1,6 +1,7 @@
 import {
   IsIn,
   IsInt,
+  IsMongoId,
   IsNumber,
   IsOptional,
   Min,
@@ -28,4 +29,11 @@ export class CollectStudentPaymentDto {
   @IsInt()
   @Min(1)
   installmentNumber?: number;
+
+  // Set when this payment is being recorded off a student-uploaded payment
+  // proof (see PaymentProof) — links the proof to the resulting Payment and
+  // marks it processed so the admin Payments page's red indicator clears.
+  @IsOptional()
+  @IsMongoId()
+  proofId?: string;
 }

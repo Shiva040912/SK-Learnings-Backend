@@ -13,6 +13,11 @@ import {
 } from './payments-settings.schema';
 
 import {
+  PaymentProof,
+  PaymentProofSchema,
+} from './payment-proof.schema';
+
+import {
   Student,
   StudentSchema,
 } from '../student/students.schema';
@@ -42,6 +47,11 @@ import { PaymentsPublicController } from './payments-public.controller';
       {
         name: PaymentSetting.name,
         schema: PaymentSettingSchema,
+      },
+
+      {
+        name: PaymentProof.name,
+        schema: PaymentProofSchema,
       },
 
       {

@@ -6,7 +6,7 @@ import {
 
 import { InjectModel } from '@nestjs/mongoose';
 
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 
 import {
   Payment,
@@ -19,6 +19,11 @@ import {
 } from './payments-settings.schema';
 
 import {
+  PaymentProof,
+  PaymentProofDocument,
+} from './payment-proof.schema';
+
+import {
   Student,
   StudentDocument,
 } from '../student/students.schema';
@@ -29,19 +34,15 @@ import { InvoiceService } from '../invoice/invoice.service';
 
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 
+import {
+  computeFeeDueDate,
+  isValidFeeDueDay,
+} from './fee-due-date.util';
+
 type FeeSetupData = {
   totalFee: number;
 
-  feeType:
-    | 'monthly'
-    | 'partial'
-    | 'yearly';
-
-  feeStartingDate?: string;
-
-  feeEndingDate?: string;
-
-  selectedMonths?: number;
+  feeDueDay: number;
 };
 
 @Injectable()
@@ -54,6 +55,10 @@ export class PaymentsService {
     @InjectModel(PaymentSetting.name)
     private readonly paymentSettingModel:
       Model<PaymentSettingDocument>,
+
+    @InjectModel(PaymentProof.name)
+    private readonly paymentProofModel:
+      Model<PaymentProofDocument>,
 
     @InjectModel(Student.name)
     private readonly studentModel:
@@ -108,163 +113,6 @@ export class PaymentsService {
     );
 
     return today;
-  }
-
-  private parseFeeDate(
-    value: string,
-    label: string,
-  ) {
-    const parsed =
-      new Date(
-        `${value}T00:00:00`,
-      );
-
-    if (
-      Number.isNaN(
-        parsed.getTime(),
-      )
-    ) {
-      throw new BadRequestException(
-        `Invalid ${label}`,
-      );
-    }
-
-    return parsed;
-  }
-
-
-  private getMonthDayDate(
-    year: number,
-    monthIndex: number,
-    day: number,
-  ) {
-    const lastDay =
-      new Date(
-        year,
-        monthIndex + 1,
-        0,
-      ).getDate();
-
-    return new Date(
-      year,
-      monthIndex,
-      Math.min(
-        Math.max(
-          Number(day) || 1,
-          1,
-        ),
-        lastDay,
-      ),
-      0,
-      0,
-      0,
-      0,
-    );
-  }
-
-  private getRecurringFeeCycleDates(
-    startDay: number,
-    dueDay: number,
-    referenceDate =
-      new Date(),
-  ) {
-    const reference =
-      new Date(
-        referenceDate,
-      );
-
-    reference.setHours(
-      0,
-      0,
-      0,
-      0,
-    );
-
-    const year =
-      reference.getFullYear();
-
-    const month =
-      reference.getMonth();
-
-    const currentStart =
-      this.getMonthDayDate(
-        year,
-        month,
-        startDay,
-      );
-
-    let currentDue:
-      Date;
-
-    if (
-      Number(dueDay) >=
-      Number(startDay)
-    ) {
-      currentDue =
-        this.getMonthDayDate(
-          year,
-          month,
-          dueDay,
-        );
-    } else {
-      currentDue =
-        this.getMonthDayDate(
-          year,
-          month + 1,
-          dueDay,
-        );
-    }
-
-    /*
-     * If today's date is already after this cycle's due date,
-     * move to the next recurring cycle.
-     */
-    if (
-      reference >
-      currentDue
-    ) {
-      const nextStart =
-        this.getMonthDayDate(
-          year,
-          month + 1,
-          startDay,
-        );
-
-      const nextDue =
-        Number(dueDay) >=
-        Number(startDay)
-          ? this.getMonthDayDate(
-              year,
-              month + 1,
-              dueDay,
-            )
-          : this.getMonthDayDate(
-              year,
-              month + 2,
-              dueDay,
-            );
-
-      return {
-        feeStartingDate:
-          nextStart,
-
-        feeEndingDate:
-          nextDue,
-      };
-    }
-
-    /*
-     * If we are before this month's configured start day,
-     * the upcoming current-month cycle is used.
-     * If we are inside the cycle, the same cycle is used.
-     */
-    return {
-      feeStartingDate:
-        currentStart,
-
-      feeEndingDate:
-        currentDue,
-    };
   }
 
   private buildMonthlyInstallments(
@@ -528,23 +376,19 @@ export class PaymentsService {
       );
 
     /*
-     * Monthly / Partial plans must NEVER be overwritten by
+     * A legacy Monthly plan must never be overwritten by
      * Common or Course Wise fee setup.
      */
     if (
       student.feeSetupCompleted &&
-      (
-        student.feeType ===
-          'monthly' ||
-        student.feeType ===
-          'partial'
-      )
+      student.feeType ===
+        'monthly'
     ) {
       return {
         allowed: false,
 
         reason:
-          `${String(student.feeType) === 'monthly' ? 'Monthly' : 'Part Payment'} fee plan is already active`,
+          'Monthly fee plan is already active',
       };
     }
 
@@ -591,29 +435,12 @@ export class PaymentsService {
     if (!Number.isFinite(totalFee) || totalFee <= 0) {
       throw new BadRequestException('Total fee must be greater than 0');
     }
-    if (!data.feeStartingDate || !data.feeEndingDate) {
-      throw new BadRequestException(
-        'Fee starting and ending dates are required for one-time payment fee setup',
-      );
+    if (!isValidFeeDueDay(data.feeDueDay)) {
+      throw new BadRequestException('Due Day must be a whole number between 1 and 31');
     }
-    const feeStartingDate = this.parseFeeDate(
-      data.feeStartingDate,
-      'fee starting date',
-    );
-    const feeEndingDate = this.parseFeeDate(
-      data.feeEndingDate,
-      'fee ending date',
-    );
-    const today = this.getTodayStart();
-    if (feeStartingDate < today || feeEndingDate < today) {
-      throw new BadRequestException('Fee dates cannot be in the past');
-    }
-    if (feeEndingDate < feeStartingDate) {
-      throw new BadRequestException(
-        'Fee ending date cannot be before fee starting date',
-      );
-    }
-    return { totalFee, feeStartingDate, feeEndingDate };
+    const feeStartingDate = this.getTodayStart();
+    const feeDueDate = computeFeeDueDate(data.feeDueDay, feeStartingDate);
+    return { totalFee, feeDueDay: data.feeDueDay, feeStartingDate, feeDueDate };
   }
 
   private async applyBulkYearlyFee(
@@ -621,7 +448,7 @@ export class PaymentsService {
     setupSource: 'common' | 'course',
     data: FeeSetupData,
   ) {
-    const { totalFee, feeStartingDate, feeEndingDate } =
+    const { totalFee, feeDueDay, feeStartingDate, feeDueDate } =
       this.getYearlyBulkFeeValues(data);
     if (students.length === 0) return;
 
@@ -633,7 +460,8 @@ export class PaymentsService {
           feeType: 'yearly',
           feeSetupSource: setupSource,
           feeStartingDate,
-          feeEndingDate,
+          feeDueDay,
+          feeDueDate,
           feeSetupCompleted: true,
           paidAmount: 0,
           pendingAmount: totalFee,
@@ -647,6 +475,7 @@ export class PaymentsService {
           paymentMethod: 1,
           selectedMonths: 1,
           lastFeeReminderSentAt: 1,
+          feeEndingDate: 1,
         },
       },
     );
@@ -685,7 +514,7 @@ export class PaymentsService {
             totalFee: Number(student.totalFee || 0),
             feeType: student.feeType!,
             pendingAmount: Number(student.pendingAmount || 0),
-            feeEndingDate: student.feeEndingDate!,
+            feeEndingDate: student.feeDueDate!,
             pdfBuffer,
             invoiceNumber: invoice.invoiceNumber,
           });
@@ -926,7 +755,7 @@ export class PaymentsService {
     };
   }
 
-  async getPublicStudentPayment(
+  private sanitizePublicStudentId(
     studentId: string,
   ) {
     const cleanStudentId =
@@ -950,6 +779,17 @@ export class PaymentsService {
         'Invalid student payment link',
       );
     }
+
+    return cleanStudentId;
+  }
+
+  async getPublicStudentPayment(
+    studentId: string,
+  ) {
+    const cleanStudentId =
+      this.sanitizePublicStudentId(
+        studentId,
+      );
 
     const student =
       await this.studentModel.findById(
@@ -979,6 +819,14 @@ export class PaymentsService {
           updatedAt: -1,
         });
 
+    const hasPendingProof =
+      Boolean(
+        await this.paymentProofModel.exists({
+          studentId: student._id,
+          status: 'pending',
+        }),
+      );
+
     return {
       student: {
         id:
@@ -1004,11 +852,13 @@ export class PaymentsService {
             student.pendingAmount ||
               0,
           ),
+
+        hasPendingProof,
       },
 
       payment: {
         feeDueDate:
-          student.feeEndingDate ||
+          student.feeDueDate ||
           setting?.feeDueDate ||
           null,
 
@@ -1029,6 +879,173 @@ export class PaymentsService {
           '',
       },
     };
+  }
+
+  /*
+   * ==================================================
+   * PAYMENT PROOF (student-uploaded screenshot)
+   * ==================================================
+   * Lifecycle: pending (uploaded, unverified) -> processed (Admin recorded
+   * the payment, or dismissed a stale proof). Uploading a proof never
+   * changes paidAmount/pendingAmount/paymentStatus by itself — only the
+   * Admin recording the payment (collectStudentPayment, below) does that.
+   */
+
+  private static readonly MAX_PROOF_IMAGE_DATA_LENGTH = 6_000_000;
+
+  async submitPaymentProof(
+    studentId: string,
+    data: {
+      imageData: string;
+      amountClaimed?: number;
+    },
+  ) {
+    const cleanStudentId =
+      this.sanitizePublicStudentId(
+        studentId,
+      );
+
+    const student =
+      await this.studentModel.findById(
+        cleanStudentId,
+      );
+
+    if (!student) {
+      throw new NotFoundException(
+        'Student not found',
+      );
+    }
+
+    if (!student.feeSetupCompleted) {
+      throw new BadRequestException(
+        'Fee has not been setup for this student',
+      );
+    }
+
+    if (student.paymentStatus === 'paid') {
+      throw new BadRequestException(
+        'Fee is already fully paid',
+      );
+    }
+
+    if (
+      typeof data.imageData !== 'string' ||
+      !/^data:image\/(png|jpe?g|webp);base64,/i.test(data.imageData)
+    ) {
+      throw new BadRequestException(
+        'Upload a valid image (PNG, JPG or WEBP)',
+      );
+    }
+
+    if (
+      data.imageData.length >
+      PaymentsService.MAX_PROOF_IMAGE_DATA_LENGTH
+    ) {
+      throw new BadRequestException(
+        'Image is too large. Please upload a smaller screenshot',
+      );
+    }
+
+    const existingPendingProof =
+      await this.paymentProofModel.findOne({
+        studentId: student._id,
+        status: 'pending',
+      });
+
+    if (existingPendingProof) {
+      throw new BadRequestException(
+        'A payment proof is already pending verification. Please wait for admin to process it before submitting another.',
+      );
+    }
+
+    const proof = await this.paymentProofModel.create({
+      studentId: student._id,
+      imageData: data.imageData,
+      amountClaimed:
+        typeof data.amountClaimed === 'number'
+          ? this.roundMoney(data.amountClaimed)
+          : null,
+      status: 'pending',
+    });
+
+    return {
+      message:
+        'Payment proof submitted successfully. Please wait for admin verification.',
+      proofId: proof._id,
+      status: proof.status,
+    };
+  }
+
+  // Admin Payments page: lightweight list to merge onto the table rows so
+  // the red "unverified proof" indicator is backend-driven, not local state.
+  async getPendingPaymentProofs() {
+    const proofs = await this.paymentProofModel
+      .find({ status: 'pending' })
+      .select('studentId amountClaimed createdAt')
+      .lean();
+
+    return proofs.map((proof) => ({
+      studentId: String(proof.studentId),
+      proofId: String(proof._id),
+      amountClaimed: proof.amountClaimed ?? null,
+      uploadedAt: (proof as unknown as { createdAt: Date }).createdAt,
+    }));
+  }
+
+  // Non-`_id` ObjectId fields (studentId here) are not auto-cast from a
+  // plain string by this Mongoose version the way `_id` is — cast
+  // explicitly so a string param actually matches stored ObjectId values.
+  private toStudentObjectId(studentId: string) {
+    if (!/^[a-fA-F0-9]{24}$/.test(String(studentId || ''))) {
+      throw new BadRequestException('Invalid student id');
+    }
+
+    return new Types.ObjectId(studentId);
+  }
+
+  // Admin verification popup: the screenshot itself plus what the student
+  // claimed, so the Admin can cross-check before entering the real amount.
+  async getStudentPaymentProof(studentId: string) {
+    const proof = await this.paymentProofModel
+      .findOne({
+        studentId: this.toStudentObjectId(studentId),
+        status: 'pending',
+      })
+      .sort({ createdAt: -1 });
+
+    if (!proof) {
+      throw new NotFoundException(
+        'No pending payment proof found for this student',
+      );
+    }
+
+    return {
+      proofId: proof._id,
+      imageData: proof.imageData,
+      amountClaimed: proof.amountClaimed ?? null,
+      uploadedAt: (proof as unknown as { createdAt: Date }).createdAt,
+    };
+  }
+
+  // Lets the Admin clear a stale proof (e.g. the balance was already
+  // settled through another channel) without recording a payment for it.
+  async dismissPaymentProof(studentId: string, proofId: string) {
+    const result = await this.paymentProofModel.updateOne(
+      {
+        _id: proofId,
+        studentId: this.toStudentObjectId(studentId),
+        status: 'pending',
+      },
+      { $set: { status: 'processed', processedAt: new Date() } },
+    );
+
+    if (result.modifiedCount !== 1) {
+      throw new BadRequestException(
+        'Payment proof not found or already processed',
+      );
+    }
+
+    return { message: 'Payment proof dismissed' };
   }
 
   async getPayments() {
@@ -1082,10 +1099,6 @@ export class PaymentsService {
       );
     }
 
-    if (String(data.feeType) === 'monthly') {
-      throw new BadRequestException('Monthly fee plans are no longer available');
-    }
-
     if (
       student.feeSetupCompleted &&
       student.paymentStatus !== 'paid'
@@ -1097,6 +1110,14 @@ export class PaymentsService {
 
     const feeSettings =
       await this.settingsService.getFeeSettings();
+
+    if (
+      !feeSettings.yearlyFeeEnabled
+    ) {
+      throw new BadRequestException(
+        'Fee setup is disabled in settings',
+      );
+    }
 
     const totalFee =
       this.roundMoney(
@@ -1116,180 +1137,30 @@ export class PaymentsService {
       );
     }
 
-    const today =
+    if (
+      !isValidFeeDueDay(
+        data.feeDueDay,
+      )
+    ) {
+      throw new BadRequestException(
+        'Due Day must be a whole number between 1 and 31',
+      );
+    }
+
+    const feeStartingDate =
       this.getTodayStart();
 
-    let feeStartingDate:
-      Date;
-
-    let feeEndingDate:
-      Date;
-
-    if (
-      data.feeType ===
-        'monthly' ||
-      data.feeType ===
-        'partial'
-    ) {
-      const recurringCycle =
-        this.getRecurringFeeCycleDates(
-          Number(
-            feeSettings.recurringFeeStartDay ||
-              1,
-          ),
-          Number(
-            feeSettings.recurringFeeDueDay ||
-              10,
-          ),
-          today,
-        );
-
-      feeStartingDate =
-        recurringCycle.feeStartingDate;
-
-      feeEndingDate =
-        recurringCycle.feeEndingDate;
-    } else {
-      if (
-        !data.feeStartingDate
-      ) {
-        throw new BadRequestException(
-          'Fee starting date is required for one-time payment fee setup',
-        );
-      }
-
-      if (
-        !data.feeEndingDate
-      ) {
-        throw new BadRequestException(
-          'Fee ending date is required for one-time payment fee setup',
-        );
-      }
-
-      feeStartingDate =
-        this.parseFeeDate(
-          data.feeStartingDate,
-          'fee starting date',
-        );
-
-      feeEndingDate =
-        this.parseFeeDate(
-          data.feeEndingDate,
-          'fee ending date',
-        );
-
-      if (
-        feeStartingDate <
-        today
-      ) {
-        throw new BadRequestException(
-          'Fee starting date cannot be in the past',
-        );
-      }
-
-      if (
-        feeEndingDate <
-        today
-      ) {
-        throw new BadRequestException(
-          'Fee ending date cannot be in the past',
-        );
-      }
-
-      if (
-        feeEndingDate <
-        feeStartingDate
-      ) {
-        throw new BadRequestException(
-          'Fee ending date cannot be before fee starting date',
-        );
-      }
-    }
-
-    if (
-      data.feeType ===
-        'monthly' &&
-      !feeSettings.monthlyFeeEnabled
-    ) {
-      throw new BadRequestException(
-        'Monthly fee payment is disabled in settings',
+    const feeDueDate =
+      computeFeeDueDate(
+        data.feeDueDay,
+        feeStartingDate,
       );
-    }
-
-    if (
-      data.feeType ===
-        'partial' &&
-      !feeSettings.partialFeeEnabled
-    ) {
-      throw new BadRequestException(
-        'Part Payment fee payment is disabled in settings',
-      );
-    }
-
-    if (
-      data.feeType ===
-        'yearly' &&
-      !feeSettings.yearlyFeeEnabled
-    ) {
-      throw new BadRequestException(
-        'One-Time Payment fee payment is disabled in settings',
-      );
-    }
-
-    let selectedMonths:
-      | number
-      | undefined;
-
-    let monthlyAmount =
-      0;
-
-    if (
-      data.feeType ===
-      'monthly'
-    ) {
-      selectedMonths =
-        Number(
-          data.selectedMonths ??
-            feeSettings.defaultMonths,
-        );
-
-      if (
-        !Number.isInteger(
-          selectedMonths,
-        ) ||
-        selectedMonths <
-          1
-      ) {
-        throw new BadRequestException(
-          'Selected months must be a positive whole number',
-        );
-      }
-
-      const installments =
-        this.buildMonthlyInstallments(
-          totalFee,
-          selectedMonths,
-        );
-
-      monthlyAmount =
-        Number(
-          installments[0]
-            ?.amount ||
-            0,
-        );
-
-      student.monthlyInstallments =
-        installments;
-    } else {
-      student.monthlyInstallments =
-        [];
-    }
 
     student.totalFee =
       totalFee;
 
     student.feeType =
-      data.feeType;
+      'yearly';
 
     student.feeSetupSource =
       setupSource;
@@ -1297,8 +1168,14 @@ export class PaymentsService {
     student.feeStartingDate =
       feeStartingDate;
 
+    student.feeDueDay =
+      data.feeDueDay;
+
+    student.feeDueDate =
+      feeDueDate;
+
     student.feeEndingDate =
-      feeEndingDate;
+      undefined;
 
     student.feeSetupCompleted =
       true;
@@ -1324,22 +1201,14 @@ export class PaymentsService {
     student.feeReminderCount =
       0;
 
-    if (
-      data.feeType ===
-      'monthly'
-    ) {
-      student.selectedMonths =
-        selectedMonths;
+    student.selectedMonths =
+      undefined;
 
-      student.monthlyAmount =
-        monthlyAmount;
-    } else {
-      student.selectedMonths =
-        undefined;
+    student.monthlyAmount =
+      0;
 
-      student.monthlyAmount =
-        0;
-    }
+    student.monthlyInstallments =
+      [];
 
     await student.save();
 
@@ -1364,42 +1233,11 @@ export class PaymentsService {
         totalFee:
           student.totalFee,
 
-        feeType:
-          student.feeType,
+        feeDueDay:
+          student.feeDueDay,
 
-        feeStartingDate:
-          student.feeStartingDate,
-
-        feeEndingDate:
-          student.feeEndingDate,
-
-        recurringFeeStartDay:
-          String(data.feeType) === 'monthly' ||
-          data.feeType === 'partial'
-            ? feeSettings.recurringFeeStartDay
-            : null,
-
-        recurringFeeDueDay:
-          String(data.feeType) === 'monthly' ||
-          data.feeType === 'partial'
-            ? feeSettings.recurringFeeDueDay
-            : null,
-
-        selectedMonths:
-          student.selectedMonths ||
-          null,
-
-        monthlyAmount:
-          student.monthlyAmount,
-
-        monthlyInstallments:
-          student.feeType ===
-          'monthly'
-            ? student.monthlyInstallments
-            : [],
-
-        minimumPartialAmount:
-          null,
+        feeDueDate:
+          student.feeDueDate,
       },
     };
   }
@@ -1424,10 +1262,6 @@ export class PaymentsService {
       throw new BadRequestException('Student fee setup is not completed');
     }
 
-    if (String(data.feeType) === 'monthly') {
-      throw new BadRequestException('Monthly fee plans are no longer available');
-    }
-
     const totalFee = this.roundMoney(Number(data.totalFee));
     const paidAmount = this.roundMoney(Number(student.paidAmount || 0));
 
@@ -1442,44 +1276,26 @@ export class PaymentsService {
     }
 
     const feeSettings = await this.settingsService.getFeeSettings();
-    const today = this.getTodayStart();
-    let feeStartingDate: Date;
-    let feeEndingDate: Date;
 
-    if (data.feeType === 'partial') {
-      if (!feeSettings.partialFeeEnabled) {
-        throw new BadRequestException('Part Payment fee payment is disabled in settings');
-      }
-
-      const recurringCycle = this.getRecurringFeeCycleDates(
-        Number(feeSettings.recurringFeeStartDay || 1),
-        Number(feeSettings.recurringFeeDueDay || 10),
-        today,
-      );
-      feeStartingDate = recurringCycle.feeStartingDate;
-      feeEndingDate = recurringCycle.feeEndingDate;
-    } else {
-      if (!feeSettings.yearlyFeeEnabled) {
-        throw new BadRequestException('One-Time Payment fee payment is disabled in settings');
-      }
-      if (!data.feeStartingDate || !data.feeEndingDate) {
-        throw new BadRequestException(
-          'Fee starting and ending dates are required for full payment',
-        );
-      }
-      feeStartingDate = this.parseFeeDate(data.feeStartingDate, 'fee starting date');
-      feeEndingDate = this.parseFeeDate(data.feeEndingDate, 'fee ending date');
-      if (feeEndingDate < feeStartingDate) {
-        throw new BadRequestException('Fee ending date cannot be before fee starting date');
-      }
+    if (!feeSettings.yearlyFeeEnabled) {
+      throw new BadRequestException('Fee setup is disabled in settings');
     }
+
+    if (!isValidFeeDueDay(data.feeDueDay)) {
+      throw new BadRequestException('Due Day must be a whole number between 1 and 31');
+    }
+
+    const feeStartingDate = this.getTodayStart();
+    const feeDueDate = computeFeeDueDate(data.feeDueDay, feeStartingDate);
 
     const pendingAmount = this.roundMoney(totalFee - paidAmount);
     student.totalFee = totalFee;
-    student.feeType = data.feeType;
+    student.feeType = 'yearly';
     student.feeSetupSource = 'individual';
     student.feeStartingDate = feeStartingDate;
-    student.feeEndingDate = feeEndingDate;
+    student.feeDueDay = data.feeDueDay;
+    student.feeDueDate = feeDueDate;
+    student.feeEndingDate = undefined;
     student.pendingAmount = pendingAmount;
     student.paymentStatus = pendingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
     student.selectedMonths = undefined;
@@ -1514,7 +1330,7 @@ export class PaymentsService {
           totalFee: Number(student.totalFee || 0),
           feeType: student.feeType!,
           pendingAmount: Number(student.pendingAmount || 0),
-          feeEndingDate: student.feeEndingDate!,
+          feeEndingDate: student.feeDueDate!,
           pdfBuffer,
           invoiceNumber: invoice.invoiceNumber,
         });
@@ -1546,14 +1362,12 @@ export class PaymentsService {
       !feeSettings.yearlyFeeEnabled
     ) {
       throw new BadRequestException(
-        'One-Time Payment fee payment is disabled in settings',
+        'Fee setup is disabled in settings',
       );
     }
 
     const bulkData: FeeSetupData = {
       ...data,
-      feeType: 'yearly',
-      selectedMonths: undefined,
     };
 
     const students =
@@ -1683,8 +1497,8 @@ export class PaymentsService {
         feeType:
           'yearly',
 
-        feeEndingDate:
-          bulkData.feeEndingDate,
+        feeDueDay:
+          bulkData.feeDueDay,
 
         selectedMonths:
           null,
@@ -1723,14 +1537,12 @@ export class PaymentsService {
       !feeSettings.yearlyFeeEnabled
     ) {
       throw new BadRequestException(
-        'One-Time Payment fee payment is disabled in settings',
+        'Fee setup is disabled in settings',
       );
     }
 
     const bulkData: FeeSetupData = {
       ...data,
-      feeType: 'yearly',
-      selectedMonths: undefined,
     };
 
     const courseName =
@@ -1893,8 +1705,8 @@ export class PaymentsService {
         feeType:
           'yearly',
 
-        feeEndingDate:
-          bulkData.feeEndingDate,
+        feeDueDay:
+          bulkData.feeDueDay,
 
         selectedMonths:
           null,
@@ -1927,6 +1739,8 @@ export class PaymentsService {
 
       installmentNumber?:
         number;
+
+      proofId?: string;
     },
   ) {
     const student =
@@ -1938,6 +1752,29 @@ export class PaymentsService {
       throw new NotFoundException(
         'Student not found',
       );
+    }
+
+    // When recording a payment off a student-uploaded proof, validate it
+    // up front (before creating anything) so a stale/already-processed
+    // proofId is rejected with a clear error instead of silently double
+    // counting or overwriting a payment already recorded for it.
+    let claimedProof: PaymentProofDocument | null = null;
+
+    if (data.proofId) {
+      claimedProof = await this.paymentProofModel.findOne({
+        _id: data.proofId,
+        studentId: student._id,
+      });
+
+      if (!claimedProof) {
+        throw new NotFoundException('Payment proof not found');
+      }
+
+      if (claimedProof.status !== 'pending') {
+        throw new BadRequestException(
+          'This payment proof has already been processed',
+        );
+      }
     }
 
     if (String(student.feeType) === 'monthly') {
@@ -2050,8 +1887,8 @@ export class PaymentsService {
        * First create the Payment transaction successfully.
        */
     } else if (
-      student.feeType ===
-      'partial'
+      student.feeType === 'partial' ||
+      student.feeType === 'yearly'
     ) {
       const enteredAmount =
         this.roundMoney(
@@ -2067,7 +1904,7 @@ export class PaymentsService {
         enteredAmount <= 0
       ) {
         throw new BadRequestException(
-          'Enter a valid part payment amount',
+          'Enter a valid payment amount',
         );
       }
 
@@ -2082,12 +1919,6 @@ export class PaymentsService {
 
       paymentAmount =
         enteredAmount;
-    } else if (
-      student.feeType ===
-      'yearly'
-    ) {
-      paymentAmount =
-        currentPendingAmount;
     } else {
       throw new BadRequestException(
         'Student fee type is not configured',
@@ -2201,6 +2032,21 @@ export class PaymentsService {
     }
 
     await student.save();
+
+    if (claimedProof) {
+      // Payment already succeeded above — this is best-effort bookkeeping,
+      // so a rare concurrent-claim race here must not fail the request.
+      await this.paymentProofModel.updateOne(
+        { _id: claimedProof._id, status: 'pending' },
+        {
+          $set: {
+            status: 'processed',
+            paymentId: payment._id,
+            processedAt: new Date(),
+          },
+        },
+      );
+    }
 
     const invoice = null;
 
@@ -2548,6 +2394,12 @@ export class PaymentsService {
     student.feeEndingDate =
       undefined;
 
+    student.feeDueDay =
+      undefined;
+
+    student.feeDueDate =
+      undefined;
+
     student.feeSetupCompleted =
       false;
 
@@ -2600,10 +2452,10 @@ export class PaymentsService {
         feeType:
           null,
 
-        feeStartingDate:
+        feeDueDay:
           null,
 
-        feeEndingDate:
+        feeDueDate:
           null,
 
         feeSetupCompleted:

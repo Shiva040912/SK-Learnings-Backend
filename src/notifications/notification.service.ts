@@ -208,10 +208,10 @@ export class NotificationsService {
     }
 
     if (
-      !student.feeEndingDate
+      !student.feeDueDate
     ) {
       throw new BadRequestException(
-        'Student fee ending date is not configured',
+        'Student fee due date is not configured',
       );
     }
 
@@ -237,7 +237,7 @@ export class NotificationsService {
             ),
 
           dueDate:
-            student.feeEndingDate,
+            student.feeDueDate,
         },
       );
 
@@ -281,7 +281,7 @@ export class NotificationsService {
             true,
         })
         .sort({
-          feeEndingDate:
+          feeDueDate:
             1,
         });
 
@@ -328,9 +328,9 @@ export class NotificationsService {
       const student of students
     ) {
       const dueDate =
-        student.feeEndingDate
+        student.feeDueDate
           ? new Date(
-              student.feeEndingDate,
+              student.feeDueDate,
             )
           : null;
 

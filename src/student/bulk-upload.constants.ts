@@ -1,0 +1,2 @@
+export const MAX_BULK_UPLOAD_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+export const MAX_BULK_UPLOAD_ROWS = 2000;

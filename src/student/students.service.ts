@@ -189,6 +189,10 @@ export class StudentsService {
 
       feeEndingDate: undefined,
 
+      feeDueDay: undefined,
+
+      feeDueDate: undefined,
+
       feeSetupCompleted: false,
 
       selectedMonths: undefined,

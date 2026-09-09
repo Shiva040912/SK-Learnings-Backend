@@ -417,7 +417,7 @@ export class InvoiceService {
         null,
 
       feeEndingDate:
-        student.feeEndingDate ||
+        student.feeDueDate ||
         null,
 
       currentPayableAmount:
@@ -584,7 +584,7 @@ export class InvoiceService {
           new Date(),
 
         dueDate:
-          student.feeEndingDate ||
+          student.feeDueDate ||
           null,
 
         isActive:
@@ -725,7 +725,7 @@ export class InvoiceService {
           new Date(),
 
         dueDate:
-          student.feeEndingDate ||
+          student.feeDueDate ||
           null,
 
         isActive:
