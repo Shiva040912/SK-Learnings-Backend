@@ -1170,6 +1170,20 @@ export class PaymentsService {
     student.feeStartingDate =
       feeStartingDate;
 
+    // A genuinely new cycle begins here (first-ever setup or "Assign Next
+    // Fee") — stamp a fresh cycle marker so payments collected from now on
+    // restart "Nth Due" numbering at 1st Due instead of continuing the
+    // previous cycle's count. editStudentFee deliberately does not touch
+    // this — it corrects the SAME cycle, it doesn't start a new one.
+    //
+    // Deliberately NOT `feeStartingDate` above — that value is truncated to
+    // the start of the day, so a student who is paid off and immediately
+    // reassigned a next fee on the SAME day would get an identical marker
+    // for both cycles. A fresh full-precision timestamp guarantees each
+    // real cycle-start event gets its own value.
+    student.feeCycleStartedAt =
+      new Date();
+
     student.feeDueDay =
       data.feeDueDay;
 
@@ -1959,6 +1973,10 @@ export class PaymentsService {
         paymentProofId:
           claimedProof?._id ??
           null,
+
+        feeCycleStartedAt:
+          student.feeCycleStartedAt ??
+          null,
       });
 
     if (
@@ -2226,6 +2244,8 @@ export class PaymentsService {
       screenshotImage?: string | null;
 
       paymentProofId?: Types.ObjectId | null;
+
+      feeCycleStartedAt?: Date | null;
     },
   ) {
     const setting =
@@ -2291,6 +2311,10 @@ export class PaymentsService {
 
         paymentProofId:
           data.paymentProofId ??
+          null,
+
+        feeCycleStartedAt:
+          data.feeCycleStartedAt ??
           null,
       });
 
@@ -2495,6 +2519,9 @@ export class PaymentsService {
       undefined;
 
     student.feeStartingDate =
+      undefined;
+
+    student.feeCycleStartedAt =
       undefined;
 
     student.feeEndingDate =

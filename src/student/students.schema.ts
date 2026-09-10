@@ -152,6 +152,22 @@ export class Student {
   feeStartingDate?: Date;
 
   /*
+   * Marks which fee cycle is currently active — set only when a genuinely
+   * NEW cycle begins (setupStudentFee: first-ever setup or "Assign Next
+   * Fee"), unlike feeStartingDate above which editStudentFee also touches
+   * just to recompute the due date for the SAME cycle. Every Payment
+   * collected while this cycle is active is stamped with this same value
+   * (Payment.feeCycleStartedAt), which is how the History UI restarts "Nth
+   * Due" numbering at 1st Due for each new cycle instead of continuing
+   * across cycles.
+   */
+  @Prop({
+    type: Date,
+    default: null,
+  })
+  feeCycleStartedAt?: Date | null;
+
+  /*
    * Deprecated — replaced by feeDueDay/feeDueDate. Kept read-only for
    * historical records created before the recurring Due Date model.
    */

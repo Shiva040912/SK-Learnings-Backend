@@ -119,6 +119,23 @@ export class Payment {
   paymentProofId?: Types.ObjectId | null;
 
   /*
+   * Snapshot of the student's fee-cycle marker (Student.feeCycleStartedAt)
+   * at the moment this payment was collected — stamped once here so the
+   * cycle a payment belongs to never changes retroactively even if the
+   * student later starts another cycle. Payments sharing the same value
+   * belong to the same fee cycle; used only to restart "Nth Due" numbering
+   * at 1 for each new cycle (see Payment.jsx's history rendering) — not a
+   * displayed value itself. Null for payments collected before this field
+   * existed, which simply keep numbering continuously as one legacy group,
+   * matching the pre-existing behavior for that older history.
+   */
+  @Prop({
+    type: Date,
+    default: null,
+  })
+  feeCycleStartedAt?: Date | null;
+
+  /*
    * Soft-delete flag for individual history-record deletion. Deleted
    * records are excluded from totals/history views but the document is
    * kept (screenshotImage is cleared) rather than hard-removed.
