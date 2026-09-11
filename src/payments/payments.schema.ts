@@ -1,16 +1,8 @@
-import {
-  Prop,
-  Schema,
-  SchemaFactory,
-} from '@nestjs/mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 
-import {
-  HydratedDocument,
-  Types,
-} from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
 
-export type PaymentDocument =
-  HydratedDocument<Payment>;
+export type PaymentDocument = HydratedDocument<Payment>;
 
 @Schema({
   timestamps: true,
@@ -61,32 +53,16 @@ export class Payment {
   billingMonth!: string;
 
   @Prop({
-    enum: [
-      'cash',
-      'bank',
-      'upi',
-      'qr',
-    ],
+    enum: ['cash', 'bank', 'upi', 'qr'],
     required: true,
   })
-  paymentMethod!:
-    | 'cash'
-    | 'bank'
-    | 'upi'
-    | 'qr';
+  paymentMethod!: 'cash' | 'bank' | 'upi' | 'qr';
 
   @Prop({
-    enum: [
-      'monthly',
-      'partial',
-      'yearly',
-    ],
+    enum: ['monthly', 'partial', 'yearly'],
     default: null,
   })
-  feeType?:
-    | 'monthly'
-    | 'partial'
-    | 'yearly';
+  feeType?: 'monthly' | 'partial' | 'yearly';
 
   @Prop({
     min: 1,
@@ -147,10 +123,7 @@ export class Payment {
   deleted?: boolean;
 }
 
-export const PaymentSchema =
-  SchemaFactory.createForClass(
-    Payment,
-  );
+export const PaymentSchema = SchemaFactory.createForClass(Payment);
 PaymentSchema.index({
   studentId: 1,
   paymentDate: -1,

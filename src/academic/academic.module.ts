@@ -1,15 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 
-import {
-  Course,
-  CourseSchema,
-} from './course.schema';
+import { Course, CourseSchema } from './course.schema';
 
-import {
-  Batch,
-  BatchSchema,
-} from './batch.schema';
+import { Batch, BatchSchema } from './batch.schema';
 
 import { AcademicController } from './academic.controller';
 import { AcademicService } from './academic.service';

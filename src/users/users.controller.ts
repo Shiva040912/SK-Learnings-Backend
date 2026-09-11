@@ -21,6 +21,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PagePermissionGuard } from '../auth/page-permission.guard';
 import { RequirePage } from '../auth/page-permission.decorator';
 
+interface RequestWithUser {
+  user?: {
+    role: string;
+  };
+}
+
 @Controller('users')
 @UseGuards(JwtAuthGuard)
 export class UsersController {
@@ -62,10 +68,12 @@ export class UsersController {
   @UseGuards(PagePermissionGuard)
   @RequirePage('users')
   createAdmin(
+    @Req() req: RequestWithUser,
+
     @Body()
     createUserDto: CreateUserDto,
   ) {
-    return this.usersService.createUser(createUserDto);
+    return this.usersService.createUser(createUserDto, req.user);
   }
 
   @Get()
@@ -89,22 +97,26 @@ export class UsersController {
   @UseGuards(PagePermissionGuard)
   @RequirePage('users')
   updateUser(
+    @Req() req: RequestWithUser,
+
     @Param('id')
     id: string,
 
     @Body()
     updateUserDto: UpdateUserDto,
   ) {
-    return this.usersService.updateUser(id, updateUserDto);
+    return this.usersService.updateUser(id, updateUserDto, req.user);
   }
 
   @Delete(':id')
   @UseGuards(PagePermissionGuard)
   @RequirePage('users')
   deleteUser(
+    @Req() req: RequestWithUser,
+
     @Param('id')
     id: string,
   ) {
-    return this.usersService.deleteUser(id);
+    return this.usersService.deleteUser(id, req.user);
   }
 }

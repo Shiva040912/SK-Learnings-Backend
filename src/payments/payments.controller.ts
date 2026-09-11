@@ -9,6 +9,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 import { PaymentsService } from './payments.service';
 
@@ -33,6 +34,7 @@ import {
 
 interface RequestWithUser {
   user?: {
+    userId: string;
     role: string;
     granularPermissions?: GranularPermissionsMap;
   };
@@ -47,6 +49,10 @@ export class PaymentsController {
    * NO LOGIN / NO JWT
    */
 
+  // Unauthenticated lookup, guessable only by a real student's Mongo ID —
+  // capped well under normal single-visitor usage but tight enough to blunt
+  // ID enumeration/scraping.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('public/student/:studentId')
   getPublicStudentPayment(
     @Param('studentId')
@@ -55,6 +61,9 @@ export class PaymentsController {
     return this.paymentsService.getPublicStudentPayment(studentId);
   }
 
+  // Unauthenticated write accepting up to ~6MB of image data per call —
+  // stricter than the read above to blunt storage/cost-abuse spam.
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('public/student/:studentId/proof')
   submitPaymentProof(
     @Param('studentId')
@@ -124,8 +133,16 @@ export class PaymentsController {
 
     @Body()
     setupStudentFeeDto: SetupStudentFeeDto,
+
+    @Req()
+    request: RequestWithUser,
   ) {
-    return this.paymentsService.setupStudentFee(studentId, setupStudentFeeDto);
+    return this.paymentsService.setupStudentFee(
+      studentId,
+      setupStudentFeeDto,
+      'individual',
+      request.user,
+    );
   }
 
   @UseGuards(JwtAuthGuard, PagePermissionGuard, PaymentActionGuard)
@@ -160,8 +177,13 @@ export class PaymentsController {
   editStudentFee(
     @Param('studentId') studentId: string,
     @Body() setupStudentFeeDto: SetupStudentFeeDto,
+    @Req() request: RequestWithUser,
   ) {
-    return this.paymentsService.editStudentFee(studentId, setupStudentFeeDto);
+    return this.paymentsService.editStudentFee(
+      studentId,
+      setupStudentFeeDto,
+      request.user,
+    );
   }
   @UseGuards(JwtAuthGuard, PagePermissionGuard, PaymentActionGuard)
   @RequirePage('payments')
@@ -223,6 +245,7 @@ export class PaymentsController {
     const result = await this.paymentsService.collectStudentPayment(
       studentId,
       collectStudentPaymentDto,
+      request.user,
     );
 
     // The response echoes the student's post-collection totalFee/paidAmount
@@ -251,8 +274,14 @@ export class PaymentsController {
   clearStudentPaymentHistory(
     @Param('studentId')
     studentId: string,
+
+    @Req()
+    request: RequestWithUser,
   ) {
-    return this.paymentsService.clearStudentPaymentHistory(studentId);
+    return this.paymentsService.clearStudentPaymentHistory(
+      studentId,
+      request.user,
+    );
   }
 
   /*
@@ -266,8 +295,14 @@ export class PaymentsController {
   deletePaymentHistoryRecord(
     @Param('paymentId')
     paymentId: string,
+
+    @Req()
+    request: RequestWithUser,
   ) {
-    return this.paymentsService.deletePaymentHistoryRecord(paymentId);
+    return this.paymentsService.deletePaymentHistoryRecord(
+      paymentId,
+      request.user,
+    );
   }
 
   @UseGuards(JwtAuthGuard, PagePermissionGuard, PaymentActionGuard)
@@ -277,8 +312,11 @@ export class PaymentsController {
   resetStudentFee(
     @Param('studentId')
     studentId: string,
+
+    @Req()
+    request: RequestWithUser,
   ) {
-    return this.paymentsService.resetStudentFee(studentId);
+    return this.paymentsService.resetStudentFee(studentId, request.user);
   }
 
   @UseGuards(JwtAuthGuard, PagePermissionGuard)

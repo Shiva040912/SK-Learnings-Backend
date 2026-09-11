@@ -1,330 +1,240 @@
-import {
-  Injectable,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 
 import puppeteer from 'puppeteer';
 
 import * as fs from 'fs';
 import * as path from 'path';
 
-import {
-  InvoiceDocument,
-} from './invoice.schema';
+import { InvoiceDocument } from './invoice.schema';
 
 @Injectable()
 export class InvoicePdfService {
-  private formatMoney(
-    value: number,
-  ) {
-    return Number(
-      value || 0,
-    ).toLocaleString(
-      'en-IN',
-      {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      },
-    );
+  // Each PDF launches its own Chrome process (see generatePdfBuffer) —
+  // reliable and simple, but under a burst of concurrent invoice requests
+  // that can spawn enough Chrome instances to exhaust CPU/memory. This
+  // caps how many launches run at once; anything beyond the cap queues in
+  // memory and runs as soon as a slot frees up, so every request still
+  // eventually succeeds — nothing is rejected or dropped.
+  private static readonly MAX_CONCURRENT_PDF_GENERATIONS = 2;
+  private activePdfGenerations = 0;
+  private readonly pdfGenerationQueue: Array<() => void> = [];
+
+  private acquirePdfSlot(): Promise<void> {
+    if (
+      this.activePdfGenerations < InvoicePdfService.MAX_CONCURRENT_PDF_GENERATIONS
+    ) {
+      this.activePdfGenerations += 1;
+      return Promise.resolve();
+    }
+
+    return new Promise((resolve) => {
+      this.pdfGenerationQueue.push(() => {
+        this.activePdfGenerations += 1;
+        resolve();
+      });
+    });
   }
 
-  private formatDate(
-    value:
-      | Date
-      | string
-      | null
-      | undefined,
-  ) {
+  private releasePdfSlot(): void {
+    this.activePdfGenerations -= 1;
+    const next = this.pdfGenerationQueue.shift();
+    if (next) {
+      next();
+    }
+  }
+
+  private formatMoney(value: number) {
+    return Number(value || 0).toLocaleString('en-IN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  private formatDate(value: Date | string | null | undefined) {
     if (!value) {
       return '-';
     }
 
-    const date =
-      new Date(value);
+    const date = new Date(value);
 
-    if (
-      Number.isNaN(
-        date.getTime(),
-      )
-    ) {
+    if (Number.isNaN(date.getTime())) {
       return '-';
     }
 
-    return date.toLocaleDateString(
-      'en-IN',
-      {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      },
-    );
+    return date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
   }
 
-  private formatPaymentMethod(
-    value:
-      | string
-      | undefined,
-  ) {
-    const labels:
-      Record<
-        string,
-        string
-      > = {
-        cash:
-          'Cash',
+  private formatPaymentMethod(value: string | undefined) {
+    const labels: Record<string, string> = {
+      cash: 'Cash',
 
-        bank:
-          'Bank',
+      bank: 'Bank',
 
-        upi:
-          'UPI',
+      upi: 'UPI',
 
-        qr:
-          'QR',
-      };
+      qr: 'QR',
+    };
 
-    return value
-      ? labels[value] ||
-          value
-      : '-';
+    return value ? labels[value] || value : '-';
   }
 
-  private escapeHtml(
-    value:
-      | string
-      | number
-      | null
-      | undefined,
-  ) {
-    return String(
-      value ?? '',
-    )
-      .replace(
-        /&/g,
-        '&amp;',
-      )
-      .replace(
-        /</g,
-        '&lt;',
-      )
-      .replace(
-        />/g,
-        '&gt;',
-      )
-      .replace(
-        /"/g,
-        '&quot;',
-      )
-      .replace(
-        /'/g,
-        '&#039;',
+  private escapeHtml(value: string | number | null | undefined) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  // business.qrCode is admin-supplied (Settings > Invoice Settings) and,
+  // unlike every other field on this document, was being written straight
+  // into an `src="..."` attribute with no escaping — any value that could
+  // break out of the attribute (or wasn't an image at all: a javascript:
+  // URI, an http(s) URL, arbitrary HTML) would become live markup in the
+  // page Puppeteer renders. The only legitimate producer (the QR upload
+  // in Settings) always yields a `data:image/...;base64,...` URL, so
+  // anything else is rejected outright rather than escaped-and-kept —
+  // narrower than "escape it" alone, and it can't regress into accepting
+  // a URL scheme this document was never meant to load.
+  private sanitizeQrCodeSrc(value: unknown): string {
+    if (typeof value !== 'string') {
+      return '';
+    }
+
+    const isDataImageUrl =
+      /^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,[A-Za-z0-9+/]+=*$/.test(
+        value,
       );
+
+    return isDataImageUrl ? value : '';
   }
 
   private getLogoBase64() {
     try {
       const possiblePaths = [
-        path.join(
-          process.cwd(),
-          'src',
-          'assets',
-          'sk-logo.png',
-        ),
+        path.join(process.cwd(), 'src', 'assets', 'sk-logo.png'),
 
-        path.join(
-          process.cwd(),
-          'dist',
-          'assets',
-          'sk-logo.png',
-        ),
+        path.join(process.cwd(), 'dist', 'assets', 'sk-logo.png'),
       ];
 
-      const logoPath =
-        possiblePaths.find(
-          (
-            filePath,
-          ) =>
-            fs.existsSync(
-              filePath,
-            ),
-        );
+      const logoPath = possiblePaths.find((filePath) =>
+        fs.existsSync(filePath),
+      );
 
       if (!logoPath) {
-        console.warn(
-          'SK logo file not found',
-        );
+        console.warn('SK logo file not found');
 
         return '';
       }
 
-      const logoBuffer =
-        fs.readFileSync(
-          logoPath,
-        );
+      const logoBuffer = fs.readFileSync(logoPath);
 
-      return `data:image/png;base64,${logoBuffer.toString(
-        'base64',
-      )}`;
+      return `data:image/png;base64,${logoBuffer.toString('base64')}`;
     } catch (error) {
-      console.error(
-        'Invoice logo load error:',
-        error,
-      );
+      console.error('Invoice logo load error:', error);
 
       return '';
     }
   }
 
-  private buildHtml(
-    invoice:
-      InvoiceDocument,
-  ) {
-    const logoBase64 =
-      this.getLogoBase64();
+  private buildHtml(invoice: InvoiceDocument) {
+    const logoBase64 = this.getLogoBase64();
 
-    const isReceipt =
-      invoice.invoiceType ===
-      'payment_receipt';
+    const isReceipt = invoice.invoiceType === 'payment_receipt';
 
-    const business =
-      invoice.business ||
-      ({} as any);
+    const business = invoice.business || ({} as any);
 
-    const student =
-      invoice.student ||
-      ({} as any);
+    const student = invoice.student || ({} as any);
 
-    const fee =
-      invoice.fee ||
-      ({} as any);
+    const fee = invoice.fee || ({} as any);
 
-    const monthlyInstallments =
-      Array.isArray(
-        fee.monthlyInstallments,
-      )
-        ? fee.monthlyInstallments
-        : [];
+    const monthlyInstallments = Array.isArray(fee.monthlyInstallments)
+      ? fee.monthlyInstallments
+      : [];
 
-    const paymentHistory =
-      Array.isArray(
-        fee.paymentHistory,
-      )
-        ? fee.paymentHistory
-        : [];
+    const paymentHistory = Array.isArray(fee.paymentHistory)
+      ? fee.paymentHistory
+      : [];
 
-    const currentPayableAmount =
-      Number(
-        fee.currentPayableAmount ??
-          invoice.invoiceAmount ??
-          0,
-      );
+    const currentPayableAmount = Number(
+      fee.currentPayableAmount ?? invoice.invoiceAmount ?? 0,
+    );
 
-    const currentInstallmentNumber =
-      Number(
-        fee.currentInstallmentNumber ||
-          0,
-      );
+    const currentInstallmentNumber = Number(fee.currentInstallmentNumber || 0);
 
-    const totalFee =
-      Number(
-        fee.totalFee ||
-          invoice.invoiceAmount ||
-          0,
-      );
+    const totalFee = Number(fee.totalFee || invoice.invoiceAmount || 0);
 
-    const paidAmount =
-      Number(
-        invoice.paidAmount ||
-          0,
-      );
+    const paidAmount = Number(invoice.paidAmount || 0);
 
-    const pendingAmount =
-      Number(
-        invoice.pendingAmount ??
-          Math.max(
-            0,
-            totalFee -
-              paidAmount,
-          ),
-      );
+    const pendingAmount = Number(
+      invoice.pendingAmount ?? Math.max(0, totalFee - paidAmount),
+    );
 
     const isFullyPaid =
-      isReceipt &&
-      (
-        invoice.paymentStatus ===
-          'paid' ||
-        pendingAmount <= 0
-      );
+      isReceipt && (invoice.paymentStatus === 'paid' || pendingAmount <= 0);
 
     const feePlanText =
-      fee.feeType ===
-      'monthly'
-        ? `${
-            fee.selectedMonths ||
-            '-'
-          } monthly installments`
+      fee.feeType === 'monthly'
+        ? `${fee.selectedMonths || '-'} monthly installments`
         : 'Any amount accepted until fully paid';
 
-    const statusClass =
-      isReceipt
-        ? isFullyPaid
-          ? 'paid'
-          : 'received'
-        : 'unpaid';
+    const statusClass = isReceipt
+      ? isFullyPaid
+        ? 'paid'
+        : 'received'
+      : 'unpaid';
 
-    const documentTitle =
-      isReceipt
-        ? 'PAYMENT RECEIPT'
-        : 'FEE INVOICE';
+    const documentTitle = isReceipt ? 'PAYMENT RECEIPT' : 'FEE INVOICE';
 
-    const documentStatus =
-      isReceipt
-        ? isFullyPaid
-          ? 'PAID'
-          : 'RECEIVED'
-        : 'PAYMENT DUE';
+    const documentStatus = isReceipt
+      ? isFullyPaid
+        ? 'PAID'
+        : 'RECEIVED'
+      : 'PAYMENT DUE';
 
-    const statusText =
-      isReceipt
-        ? isFullyPaid
-          ? 'Paid'
-          : 'Part Payment'
-        : invoice.paymentStatus ===
-            'partial'
-          ? 'Part Payment'
-          : 'Unpaid';
+    const statusText = isReceipt
+      ? isFullyPaid
+        ? 'Paid'
+        : 'Part Payment'
+      : invoice.paymentStatus === 'partial'
+        ? 'Part Payment'
+        : 'Unpaid';
 
-    const logoHtml =
-      logoBase64
-        ? `
+    const logoHtml = logoBase64
+      ? `
           <img
             src="${logoBase64}"
             alt="The SK Learnings"
           />
         `
-        : `
+      : `
           <div class="logo-fallback">
             SK
           </div>
         `;
 
-    const qrHtml =
-      business.qrCode
-        ? `
+    const qrCodeSrc = this.sanitizeQrCodeSrc(business.qrCode);
+
+    const qrHtml = qrCodeSrc
+      ? `
           <img
-            src="${business.qrCode}"
+            src="${this.escapeHtml(qrCodeSrc)}"
             alt="Payment QR Code"
           />
         `
-        : `
+      : `
           <div class="qr-missing">
             QR not configured
           </div>
         `;
 
-    const receiptPaymentMeta =
-      isReceipt
-        ? `
+    const receiptPaymentMeta = isReceipt
+      ? `
           <div class="payment-meta">
             <div>
               <span>
@@ -332,9 +242,7 @@ export class InvoicePdfService {
               </span>
 
               <strong>
-                Rs. ${this.formatMoney(
-                  invoice.invoiceAmount,
-                )}
+                Rs. ${this.formatMoney(invoice.invoiceAmount)}
               </strong>
             </div>
 
@@ -345,9 +253,7 @@ export class InvoicePdfService {
 
               <strong>
                 ${this.escapeHtml(
-                  this.formatPaymentMethod(
-                    invoice.paymentMethod,
-                  ),
+                  this.formatPaymentMethod(invoice.paymentMethod),
                 )}
               </strong>
             </div>
@@ -358,20 +264,15 @@ export class InvoicePdfService {
               </span>
 
               <strong>
-                Rs. ${this.formatMoney(
-                  pendingAmount,
-                )}
+                Rs. ${this.formatMoney(pendingAmount)}
               </strong>
             </div>
           </div>
         `
-        : '';
+      : '';
 
     const monthlyScheduleHtml =
-      fee.feeType ===
-        'monthly' &&
-      monthlyInstallments.length >
-        0
+      fee.feeType === 'monthly' && monthlyInstallments.length > 0
         ? `
           <section class="installment-section">
             <div class="section-title">
@@ -388,53 +289,33 @@ export class InvoicePdfService {
 
               ${monthlyInstallments
                 .map(
-                  (
-                    installment:
-                      any,
-                  ) => `
+                  (installment: any) => `
                     <div class="installment-row ${
-                      installment.status ===
-                      'paid'
+                      installment.status === 'paid'
                         ? 'paid'
-                        : Number(
-                              installment.installmentNumber,
-                            ) ===
+                        : Number(installment.installmentNumber) ===
                             currentInstallmentNumber
                           ? 'current'
                           : ''
                     }">
                       <span>
-                        Month ${this.escapeHtml(
-                          installment.installmentNumber,
-                        )}
+                        Month ${this.escapeHtml(installment.installmentNumber)}
                       </span>
 
                       <strong>
-                        Rs. ${this.formatMoney(
-                          installment.amount,
-                        )}
+                        Rs. ${this.formatMoney(installment.amount)}
                       </strong>
 
                       <span class="installment-status ${
-                        installment.status ===
-                        'paid'
-                          ? 'paid'
-                          : 'unpaid'
+                        installment.status === 'paid' ? 'paid' : 'unpaid'
                       }">
-                        ${
-                          installment.status ===
-                          'paid'
-                            ? 'Paid'
-                            : 'Unpaid'
-                        }
+                        ${installment.status === 'paid' ? 'Paid' : 'Unpaid'}
                       </span>
 
                       <span>
                         ${
                           installment.paidAt
-                            ? this.formatDate(
-                                installment.paidAt,
-                              )
+                            ? this.formatDate(installment.paidAt)
                             : '-'
                         }
                       </span>
@@ -447,19 +328,14 @@ export class InvoicePdfService {
             <div class="current-payable-strip">
               <span>
                 ${
-                  currentPayableAmount >
-                    0 &&
-                  currentInstallmentNumber >
-                    0
+                  currentPayableAmount > 0 && currentInstallmentNumber > 0
                     ? `Current Payable • Month ${currentInstallmentNumber}`
                     : 'Current Payable'
                 }
               </span>
 
               <strong>
-                Rs. ${this.formatMoney(
-                  currentPayableAmount,
-                )}
+                Rs. ${this.formatMoney(currentPayableAmount)}
               </strong>
             </div>
           </section>
@@ -467,10 +343,7 @@ export class InvoicePdfService {
         : '';
 
     const partialHistoryHtml =
-      fee.feeType !==
-        'monthly' &&
-      paymentHistory.length >
-        0
+      fee.feeType !== 'monthly' && paymentHistory.length > 0
         ? `
           <section class="installment-section">
             <div class="section-title">
@@ -487,34 +360,23 @@ export class InvoicePdfService {
 
               ${paymentHistory
                 .map(
-                  (
-                    item:
-                      any,
-                    index:
-                      number,
-                  ) => `
+                  (item: any, index: number) => `
                     <div class="partial-history-row">
                       <span>
                         Payment ${index + 1}
                       </span>
 
                       <strong>
-                        Rs. ${this.formatMoney(
-                          item.amount,
-                        )}
+                        Rs. ${this.formatMoney(item.amount)}
                       </strong>
 
                       <span>
-                        ${this.formatDate(
-                          item.paymentDate,
-                        )}
+                        ${this.formatDate(item.paymentDate)}
                       </span>
 
                       <span>
                         ${this.escapeHtml(
-                          this.formatPaymentMethod(
-                            item.paymentMethod,
-                          ),
+                          this.formatPaymentMethod(item.paymentMethod),
                         )}
                       </span>
                     </div>
@@ -526,9 +388,8 @@ export class InvoicePdfService {
         `
         : '';
 
-    const bottomSection =
-      !isReceipt
-        ? `
+    const bottomSection = !isReceipt
+      ? `
           <section class="bottom-grid">
             <div class="payment-panel">
               <div class="section-label">
@@ -563,9 +424,7 @@ export class InvoicePdfService {
                 </span>
 
                 <strong>
-                  Rs. ${this.formatMoney(
-                    totalFee,
-                  )}
+                  Rs. ${this.formatMoney(totalFee)}
                 </strong>
               </div>
 
@@ -575,9 +434,7 @@ export class InvoicePdfService {
                 </span>
 
                 <strong>
-                  Rs. ${this.formatMoney(
-                    paidAmount,
-                  )}
+                  Rs. ${this.formatMoney(paidAmount)}
                 </strong>
               </div>
 
@@ -588,8 +445,7 @@ export class InvoicePdfService {
 
                 <strong>
                   Rs. ${this.formatMoney(
-                    invoice.invoiceAmount ||
-                      currentPayableAmount,
+                    invoice.invoiceAmount || currentPayableAmount,
                   )}
                 </strong>
               </div>
@@ -611,9 +467,7 @@ export class InvoicePdfService {
                   business.invoiceTerms
                     ? `
                       <p>
-                        3. ${this.escapeHtml(
-                          business.invoiceTerms,
-                        )}
+                        3. ${this.escapeHtml(business.invoiceTerms)}
                       </p>
                     `
                     : ''
@@ -622,7 +476,7 @@ export class InvoicePdfService {
             </div>
           </section>
         `
-        : `
+      : `
           <section class="receipt-bottom">
             <div class="payment-received-box">
               <div class="received-icon">
@@ -635,9 +489,7 @@ export class InvoicePdfService {
                 </span>
 
                 <strong>
-                  Rs. ${this.formatMoney(
-                    invoice.invoiceAmount,
-                  )}
+                  Rs. ${this.formatMoney(invoice.invoiceAmount)}
                 </strong>
 
                 <p>
@@ -647,8 +499,7 @@ export class InvoicePdfService {
             </div>
 
             ${
-              pendingAmount >
-              0
+              pendingAmount > 0
                 ? `
                   <div class="balance-box">
                     <span>
@@ -656,9 +507,7 @@ export class InvoicePdfService {
                     </span>
 
                     <strong>
-                      Rs. ${this.formatMoney(
-                        pendingAmount,
-                      )}
+                      Rs. ${this.formatMoney(pendingAmount)}
                     </strong>
 
                     <p>
@@ -1978,9 +1827,7 @@ export class InvoicePdfService {
         </span>
 
         <strong>
-          ${this.escapeHtml(
-            invoice.invoiceNumber,
-          )}
+          ${this.escapeHtml(invoice.invoiceNumber)}
         </strong>
       </div>
 
@@ -1990,27 +1837,17 @@ export class InvoicePdfService {
         </span>
 
         <strong>
-          ${this.formatDate(
-            invoice.invoiceDate,
-          )}
+          ${this.formatDate(invoice.invoiceDate)}
         </strong>
       </div>
 
       <div class="meta-item">
         <span>
-          ${
-            isReceipt
-              ? 'Payment Date'
-              : 'Due Date'
-          }
+          ${isReceipt ? 'Payment Date' : 'Due Date'}
         </span>
 
         <strong>
-          ${this.formatDate(
-            isReceipt
-              ? invoice.paymentDate
-              : invoice.dueDate,
-          )}
+          ${this.formatDate(isReceipt ? invoice.paymentDate : invoice.dueDate)}
         </strong>
       </div>
 
@@ -2044,9 +1881,7 @@ export class InvoicePdfService {
             </span>
 
             <strong>
-              ${this.escapeHtml(
-                student.studentName,
-              )}
+              ${this.escapeHtml(student.studentName)}
             </strong>
           </div>
 
@@ -2056,9 +1891,7 @@ export class InvoicePdfService {
             </span>
 
             <strong>
-              ${this.escapeHtml(
-                student.rollNo,
-              )}
+              ${this.escapeHtml(student.rollNo)}
             </strong>
           </div>
 
@@ -2068,9 +1901,7 @@ export class InvoicePdfService {
             </span>
 
             <strong>
-              ${this.escapeHtml(
-                student.course,
-              )}
+              ${this.escapeHtml(student.course)}
             </strong>
           </div>
 
@@ -2080,10 +1911,7 @@ export class InvoicePdfService {
             </span>
 
             <strong>
-              ${this.escapeHtml(
-                student.batch ||
-                  '-',
-              )}
+              ${this.escapeHtml(student.batch || '-')}
             </strong>
           </div>
 
@@ -2093,9 +1921,7 @@ export class InvoicePdfService {
             </span>
 
             <strong>
-              ${this.escapeHtml(
-                student.parentName,
-              )}
+              ${this.escapeHtml(student.parentName)}
             </strong>
           </div>
 
@@ -2105,9 +1931,7 @@ export class InvoicePdfService {
             </span>
 
             <strong>
-              ${this.escapeHtml(
-                student.phone,
-              )}
+              ${this.escapeHtml(student.phone)}
             </strong>
           </div>
 
@@ -2128,10 +1952,7 @@ export class InvoicePdfService {
             </span>
 
             <strong>
-              ${this.escapeHtml(
-                business.ownerName ||
-                  '-',
-              )}
+              ${this.escapeHtml(business.ownerName || '-')}
             </strong>
           </div>
 
@@ -2141,10 +1962,7 @@ export class InvoicePdfService {
             </span>
 
             <strong>
-              ${this.escapeHtml(
-                business.gstNumber ||
-                  '-',
-              )}
+              ${this.escapeHtml(business.gstNumber || '-')}
             </strong>
           </div>
 
@@ -2154,10 +1972,7 @@ export class InvoicePdfService {
             </span>
 
             <strong>
-              ${this.escapeHtml(
-                business.address ||
-                  '-',
-              )}
+              ${this.escapeHtml(business.address || '-')}
             </strong>
           </div>
 
@@ -2169,11 +1984,7 @@ export class InvoicePdfService {
     <section class="fee-section">
 
       <div class="section-title">
-        ${
-          isReceipt
-            ? 'Payment Summary'
-            : 'Fee Details'
-        }
+        ${isReceipt ? 'Payment Summary' : 'Fee Details'}
       </div>
 
       <div class="fee-table">
@@ -2201,40 +2012,25 @@ export class InvoicePdfService {
           <div class="fee-description">
 
             <strong>
-              ${this.escapeHtml(
-                student.course ||
-                  'Course Fee',
-              )}
+              ${this.escapeHtml(student.course || 'Course Fee')}
             </strong>
 
             <span>
-              ${this.escapeHtml(
-                feePlanText,
-              )}
+              ${this.escapeHtml(feePlanText)}
             </span>
 
           </div>
 
           <div>
-            Rs. ${this.formatMoney(
-              totalFee,
-            )}
+            Rs. ${this.formatMoney(totalFee)}
           </div>
 
           <div>
-            Rs. ${this.formatMoney(
-              isReceipt
-                ? paidAmount
-                : 0,
-            )}
+            Rs. ${this.formatMoney(isReceipt ? paidAmount : 0)}
           </div>
 
           <div>
-            Rs. ${this.formatMoney(
-              isReceipt
-                ? pendingAmount
-                : totalFee,
-            )}
+            Rs. ${this.formatMoney(isReceipt ? pendingAmount : totalFee)}
           </div>
 
         </div>
@@ -2257,16 +2053,12 @@ export class InvoicePdfService {
 
         <strong>
           ${this.escapeHtml(
-            business.invoiceFooter ||
-              'Heart full Thanks from SK LEARNINGS',
+            business.invoiceFooter || 'Heart full Thanks from SK LEARNINGS',
           )}
         </strong>
 
         <span>
-          ${this.escapeHtml(
-            business.address ||
-              '',
-          )}
+          ${this.escapeHtml(business.address || '')}
         </span>
 
       </div>
@@ -2284,112 +2076,72 @@ export class InvoicePdfService {
     `;
   }
 
-  async generatePdfBuffer(
-    invoice:
-      InvoiceDocument,
-  ): Promise<Buffer> {
-    let browser:
-      Awaited<
-        ReturnType<
-          typeof puppeteer.launch
-        >
-      > | null =
-      null;
+  async generatePdfBuffer(invoice: InvoiceDocument): Promise<Buffer> {
+    await this.acquirePdfSlot();
+
+    let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
 
     try {
-      browser =
-        await puppeteer.launch({
-          headless:
-            true,
+      browser = await puppeteer.launch({
+        headless: true,
 
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-          ],
-        });
-
-      const page =
-        await browser.newPage();
-
-      await page.setViewport({
-        width:
-          794,
-
-        height:
-          1123,
-
-        deviceScaleFactor:
-          1,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+        ],
       });
 
-      const html =
-        this.buildHtml(
-          invoice,
-        );
+      const page = await browser.newPage();
 
-      await page.setContent(
-        html,
-        {
-          waitUntil:
-            'load',
+      await page.setViewport({
+        width: 794,
+
+        height: 1123,
+
+        deviceScaleFactor: 1,
+      });
+
+      const html = this.buildHtml(invoice);
+
+      await page.setContent(html, {
+        waitUntil: 'load',
+      });
+
+      await page.emulateMediaType('screen');
+
+      const pdf = await page.pdf({
+        format: 'A4',
+
+        landscape: false,
+
+        printBackground: true,
+
+        preferCSSPageSize: true,
+
+        scale: 1,
+
+        margin: {
+          top: '0mm',
+
+          right: '0mm',
+
+          bottom: '0mm',
+
+          left: '0mm',
         },
-      );
+      });
 
-      await page.emulateMediaType(
-        'screen',
-      );
-
-      const pdf =
-        await page.pdf({
-          format:
-            'A4',
-
-          landscape:
-            false,
-
-          printBackground:
-            true,
-
-          preferCSSPageSize:
-            true,
-
-          scale:
-            1,
-
-          margin: {
-            top:
-              '0mm',
-
-            right:
-              '0mm',
-
-            bottom:
-              '0mm',
-
-            left:
-              '0mm',
-          },
-        });
-
-      return Buffer.from(
-        pdf,
-      );
+      return Buffer.from(pdf);
     } catch (error) {
-      console.error(
-        'Invoice PDF generation error:',
-        error,
-      );
+      console.error('Invoice PDF generation error:', error);
 
-      throw new InternalServerErrorException(
-        'Unable to generate invoice PDF',
-      );
+      throw new InternalServerErrorException('Unable to generate invoice PDF');
     } finally {
-      if (
-        browser
-      ) {
+      if (browser) {
         await browser.close();
       }
+      this.releasePdfSlot();
     }
   }
 }

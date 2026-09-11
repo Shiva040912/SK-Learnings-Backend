@@ -1,14 +1,27 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { json, urlencoded } from 'express';
+import helmet from 'helmet';
 
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app =
-    await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule);
 
   app.enableShutdownHooks();
+
+  // CSP is disabled: this is a JSON/PDF API with no server-rendered HTML
+  // pages of its own, so a document-oriented policy has nothing to
+  // protect here and only risks breaking responses. CORP is relaxed to
+  // "cross-origin" because the frontend is intentionally served from a
+  // different origin (Vercel/Cloudflare) and already relies on the CORS
+  // config below — the default "same-origin" CORP would fight that.
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
 
   app.use(
     json({
@@ -24,10 +37,7 @@ async function bootstrap() {
   );
 
   app.enableCors({
-    origin: (
-      origin,
-      callback,
-    ) => {
+    origin: (origin, callback) => {
       const allowedOrigins = [
         'http://localhost:5173',
         'http://localhost:5174',
@@ -40,19 +50,11 @@ async function bootstrap() {
         return callback(null, true);
       }
 
-      if (
-        allowedOrigins.includes(origin) ||
-        origin.endsWith('.vercel.app')
-      ) {
+      if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
         return callback(null, true);
       }
 
-      return callback(
-        new Error(
-          'Not allowed by CORS',
-        ),
-        false,
-      );
+      return callback(new Error('Not allowed by CORS'), false);
     },
 
     credentials: true,
@@ -70,10 +72,7 @@ async function bootstrap() {
   try {
     await app.listen(port);
   } catch (error) {
-    if (
-      (error as NodeJS.ErrnoException)?.code === 'EADDRINUSE'
-    ) {
-      // eslint-disable-next-line no-console
+    if ((error as NodeJS.ErrnoException)?.code === 'EADDRINUSE') {
       console.error(
         `\nPort ${port} is already in use by another process.\n` +
           'This is almost always a previous backend instance (or another app) ' +

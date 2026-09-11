@@ -1,19 +1,10 @@
-import {
-  Prop,
-  Schema,
-  SchemaFactory,
-} from '@nestjs/mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 
-import {
-  HydratedDocument,
-  Types,
-} from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
 
-export type InvoiceDocument =
-  HydratedDocument<Invoice>;
+export type InvoiceDocument = HydratedDocument<Invoice>;
 
-export type InvoiceCounterDocument =
-  HydratedDocument<InvoiceCounter>;
+export type InvoiceCounterDocument = HydratedDocument<InvoiceCounter>;
 
 @Schema({
   _id: false,
@@ -86,10 +77,9 @@ export class InvoiceStudentSnapshot {
   address!: string;
 }
 
-export const InvoiceStudentSnapshotSchema =
-  SchemaFactory.createForClass(
-    InvoiceStudentSnapshot,
-  );
+export const InvoiceStudentSnapshotSchema = SchemaFactory.createForClass(
+  InvoiceStudentSnapshot,
+);
 
 @Schema({
   _id: false,
@@ -102,15 +92,13 @@ export class InvoiceBusinessSnapshot {
   businessName!: string;
 
   @Prop({
-    default:
-      'Private Educational Services',
+    default: 'Private Educational Services',
     trim: true,
   })
   tagline!: string;
 
   @Prop({
-    default:
-      'MEDICAL / ENGINEERING / FOUNDATIONS / JUNIOR IAS',
+    default: 'MEDICAL / ENGINEERING / FOUNDATIONS / JUNIOR IAS',
     trim: true,
   })
   motto!: string;
@@ -163,10 +151,9 @@ export class InvoiceBusinessSnapshot {
   invoiceTerms!: string;
 }
 
-export const InvoiceBusinessSnapshotSchema =
-  SchemaFactory.createForClass(
-    InvoiceBusinessSnapshot,
-  );
+export const InvoiceBusinessSnapshotSchema = SchemaFactory.createForClass(
+  InvoiceBusinessSnapshot,
+);
 
 @Schema({
   _id: false,
@@ -197,10 +184,9 @@ export class InvoiceInstallmentSnapshot {
   paidAt?: Date;
 }
 
-export const InvoiceInstallmentSnapshotSchema =
-  SchemaFactory.createForClass(
-    InvoiceInstallmentSnapshot,
-  );
+export const InvoiceInstallmentSnapshotSchema = SchemaFactory.createForClass(
+  InvoiceInstallmentSnapshot,
+);
 
 @Schema({
   _id: false,
@@ -219,19 +205,10 @@ export class InvoicePaymentHistorySnapshot {
   paymentDate!: Date;
 
   @Prop({
-    enum: [
-      'cash',
-      'bank',
-      'upi',
-      'qr',
-    ],
+    enum: ['cash', 'bank', 'upi', 'qr'],
     required: true,
   })
-  paymentMethod!:
-    | 'cash'
-    | 'bank'
-    | 'upi'
-    | 'qr';
+  paymentMethod!: 'cash' | 'bank' | 'upi' | 'qr';
 
   @Prop({
     default: null,
@@ -240,10 +217,9 @@ export class InvoicePaymentHistorySnapshot {
   installmentNumber?: number;
 }
 
-export const InvoicePaymentHistorySnapshotSchema =
-  SchemaFactory.createForClass(
-    InvoicePaymentHistorySnapshot,
-  );
+export const InvoicePaymentHistorySnapshotSchema = SchemaFactory.createForClass(
+  InvoicePaymentHistorySnapshot,
+);
 
 @Schema({
   _id: false,
@@ -256,17 +232,10 @@ export class InvoiceFeeSnapshot {
   totalFee!: number;
 
   @Prop({
-    enum: [
-      'monthly',
-      'partial',
-      'yearly',
-    ],
+    enum: ['monthly', 'partial', 'yearly'],
     required: true,
   })
-  feeType!:
-    | 'monthly'
-    | 'partial'
-    | 'yearly';
+  feeType!: 'monthly' | 'partial' | 'yearly';
 
   @Prop({
     default: null,
@@ -314,28 +283,20 @@ export class InvoiceFeeSnapshot {
   currentInstallmentNumber?: number;
 
   @Prop({
-    type: [
-      InvoiceInstallmentSnapshotSchema,
-    ],
+    type: [InvoiceInstallmentSnapshotSchema],
     default: [],
   })
-  monthlyInstallments!:
-    InvoiceInstallmentSnapshot[];
+  monthlyInstallments!: InvoiceInstallmentSnapshot[];
 
   @Prop({
-    type: [
-      InvoicePaymentHistorySnapshotSchema,
-    ],
+    type: [InvoicePaymentHistorySnapshotSchema],
     default: [],
   })
-  paymentHistory!:
-    InvoicePaymentHistorySnapshot[];
+  paymentHistory!: InvoicePaymentHistorySnapshot[];
 }
 
 export const InvoiceFeeSnapshotSchema =
-  SchemaFactory.createForClass(
-    InvoiceFeeSnapshot,
-  );
+  SchemaFactory.createForClass(InvoiceFeeSnapshot);
 
 @Schema({
   timestamps: true,
@@ -350,16 +311,11 @@ export class Invoice {
   invoiceNumber!: string;
 
   @Prop({
-    enum: [
-      'fee_setup',
-      'payment_receipt',
-    ],
+    enum: ['fee_setup', 'payment_receipt'],
     required: true,
     index: true,
   })
-  invoiceType!:
-    | 'fee_setup'
-    | 'payment_receipt';
+  invoiceType!: 'fee_setup' | 'payment_receipt';
 
   @Prop({
     type: Types.ObjectId,
@@ -414,32 +370,16 @@ export class Invoice {
   pendingAmount!: number;
 
   @Prop({
-    enum: [
-      'unpaid',
-      'partial',
-      'paid',
-    ],
+    enum: ['unpaid', 'partial', 'paid'],
     default: 'unpaid',
   })
-  paymentStatus!:
-    | 'unpaid'
-    | 'partial'
-    | 'paid';
+  paymentStatus!: 'unpaid' | 'partial' | 'paid';
 
   @Prop({
-    enum: [
-      'cash',
-      'bank',
-      'upi',
-      'qr',
-    ],
+    enum: ['cash', 'bank', 'upi', 'qr'],
     default: null,
   })
-  paymentMethod?:
-    | 'cash'
-    | 'bank'
-    | 'upi'
-    | 'qr';
+  paymentMethod?: 'cash' | 'bank' | 'upi' | 'qr';
 
   @Prop({
     type: Date,
@@ -465,10 +405,7 @@ export class Invoice {
   isActive!: boolean;
 }
 
-export const InvoiceSchema =
-  SchemaFactory.createForClass(
-    Invoice,
-  );
+export const InvoiceSchema = SchemaFactory.createForClass(Invoice);
 
 InvoiceSchema.index({
   studentId: 1,
@@ -499,6 +436,4 @@ export class InvoiceCounter {
 }
 
 export const InvoiceCounterSchema =
-  SchemaFactory.createForClass(
-    InvoiceCounter,
-  );
+  SchemaFactory.createForClass(InvoiceCounter);

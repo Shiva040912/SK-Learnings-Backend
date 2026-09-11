@@ -13,5 +13,4 @@ export class Course {
   courseName!: string;
 }
 
-export const CourseSchema =
-  SchemaFactory.createForClass(Course);
+export const CourseSchema = SchemaFactory.createForClass(Course);

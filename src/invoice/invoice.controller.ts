@@ -11,6 +11,7 @@ import {
 import type { Response } from 'express';
 
 import { InvoiceService } from './invoice.service';
+import { InvoiceDocument } from './invoice.schema';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PagePermissionGuard } from '../auth/page-permission.guard';
@@ -74,8 +75,7 @@ export class InvoiceController {
     @Req()
     request: RequestWithUser,
   ) {
-    const invoice =
-      await this.invoiceService.getInvoiceByNumber(invoiceNumber);
+    const invoice = await this.invoiceService.getInvoiceByNumber(invoiceNumber);
 
     return redactInvoiceForUser(
       invoice.toObject() as unknown as Record<string, unknown>,
@@ -89,13 +89,28 @@ export class InvoiceController {
     @Param('id')
     id: string,
 
+    @Req()
+    request: RequestWithUser,
+
     @Res()
     response: Response,
   ) {
     const invoice = await this.invoiceService.getInvoiceById(id);
 
-    const pdfBuffer =
-      await this.invoiceService.generateInvoicePdfByDocument(invoice);
+    // Same Fields-permission redaction already applied to every JSON read
+    // of this exact resource (getInvoiceById/getInvoices/etc. below) — the
+    // PDF must not disclose anything those routes already hide from this
+    // caller. buildHtml() already treats a missing/undefined field as "0"
+    // or omitted, so a redacted invoice renders correctly, just without the
+    // restricted figures.
+    const redactedInvoice = redactInvoiceForUser(
+      invoice.toObject() as unknown as Record<string, unknown>,
+      request.user,
+    );
+
+    const pdfBuffer = await this.invoiceService.generateInvoicePdfByDocument(
+      redactedInvoice as unknown as InvoiceDocument,
+    );
 
     response.set({
       'Content-Type': 'application/pdf',

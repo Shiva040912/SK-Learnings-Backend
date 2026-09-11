@@ -8,17 +8,8 @@ import {
 } from 'class-validator';
 
 export class CollectStudentPaymentDto {
-  @IsIn([
-    'cash',
-    'bank',
-    'upi',
-    'qr',
-  ])
-  paymentMethod!:
-    | 'cash'
-    | 'bank'
-    | 'upi'
-    | 'qr';
+  @IsIn(['cash', 'bank', 'upi', 'qr'])
+  paymentMethod!: 'cash' | 'bank' | 'upi' | 'qr';
 
   @IsOptional()
   @IsNumber()

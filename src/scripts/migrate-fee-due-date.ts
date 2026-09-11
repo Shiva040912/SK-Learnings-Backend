@@ -26,7 +26,9 @@ async function run() {
     logger: false,
   });
 
-  const studentModel = app.get<Model<StudentDocument>>(getModelToken(Student.name));
+  const studentModel = app.get<Model<StudentDocument>>(
+    getModelToken(Student.name),
+  );
 
   const candidates = await studentModel.find({
     feeSetupCompleted: true,

@@ -14,6 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
 
 import { StudentsService } from './students.service';
@@ -53,6 +54,9 @@ export class StudentsController {
    * PUBLIC PAYMENT LINK TRACKING
    */
 
+  // Unauthenticated tracking ping — capped to blunt spam, well above any
+  // real visitor's click rate.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('public/:id/payment-link-click')
   trackPaymentLinkClick(
     @Param('id')

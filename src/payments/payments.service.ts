@@ -8,22 +8,17 @@ import { InjectModel } from '@nestjs/mongoose';
 
 import { Model, Types } from 'mongoose';
 
-import {
-  Payment,
-  PaymentDocument,
-} from './payments.schema';
+import { Payment, PaymentDocument } from './payments.schema';
 
 import {
   PaymentSetting,
   PaymentSettingDocument,
 } from './payments-settings.schema';
 
-import {
-  PaymentProof,
-  PaymentProofDocument,
-} from './payment-proof.schema';
+import { PaymentProof, PaymentProofDocument } from './payment-proof.schema';
 
 import {
+  MonthlyInstallment,
   Student,
   StudentDocument,
 } from '../student/students.schema';
@@ -34,10 +29,8 @@ import { InvoiceService } from '../invoice/invoice.service';
 
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 
-import {
-  computeFeeDueDate,
-  isValidFeeDueDay,
-} from './fee-due-date.util';
+import { computeFeeDueDate, isValidFeeDueDay } from './fee-due-date.util';
+import { AuditActor, AuditLogService } from '../audit/audit-log.service';
 
 type FeeSetupData = {
   totalFee: number;
@@ -49,68 +42,42 @@ type FeeSetupData = {
 export class PaymentsService {
   constructor(
     @InjectModel(Payment.name)
-    private readonly paymentModel:
-      Model<PaymentDocument>,
+    private readonly paymentModel: Model<PaymentDocument>,
 
     @InjectModel(PaymentSetting.name)
-    private readonly paymentSettingModel:
-      Model<PaymentSettingDocument>,
+    private readonly paymentSettingModel: Model<PaymentSettingDocument>,
 
     @InjectModel(PaymentProof.name)
-    private readonly paymentProofModel:
-      Model<PaymentProofDocument>,
+    private readonly paymentProofModel: Model<PaymentProofDocument>,
 
     @InjectModel(Student.name)
-    private readonly studentModel:
-      Model<StudentDocument>,
+    private readonly studentModel: Model<StudentDocument>,
 
-    private readonly settingsService:
-      SettingsService,
+    private readonly settingsService: SettingsService,
 
-    private readonly invoiceService:
-      InvoiceService,
+    private readonly invoiceService: InvoiceService,
 
-    private readonly whatsappService:
-      WhatsappService,
+    private readonly whatsappService: WhatsappService,
+
+    private readonly auditLogService: AuditLogService,
   ) {}
 
-  private getBillingMonth(
-    date: Date,
-  ) {
-    const year =
-      date.getFullYear();
+  private getBillingMonth(date: Date) {
+    const year = date.getFullYear();
 
-    const month =
-      String(
-        date.getMonth() + 1,
-      ).padStart(
-        2,
-        '0',
-      );
+    const month = String(date.getMonth() + 1).padStart(2, '0');
 
     return `${year}-${month}`;
   }
 
-  private roundMoney(
-    value: number,
-  ) {
-    return Number(
-      Number(
-        value || 0,
-      ).toFixed(2),
-    );
+  private roundMoney(value: number) {
+    return Number(Number(value || 0).toFixed(2));
   }
 
   private getTodayStart() {
-    const today =
-      new Date();
+    const today = new Date();
 
-    today.setHours(
-      0,
-      0,
-      0,
-      0,
-    );
+    today.setHours(0, 0, 0, 0);
 
     return today;
   }
@@ -118,13 +85,8 @@ export class PaymentsService {
   private buildMonthlyInstallments(
     totalFee: number,
     selectedMonths: number,
-  ) {
-    if (
-      !Number.isInteger(
-        selectedMonths,
-      ) ||
-      selectedMonths < 1
-    ) {
+  ): MonthlyInstallment[] {
+    if (!Number.isInteger(selectedMonths) || selectedMonths < 1) {
       throw new BadRequestException(
         'Selected months must be a positive whole number',
       );
@@ -140,229 +102,120 @@ export class PaymentsService {
      * Month 14   = ₹2,859
      * Total      = ₹40,000 exactly.
      */
-    const normalizedTotalFee =
-      Number(totalFee);
+    const normalizedTotalFee = Number(totalFee);
 
-    if (
-      !Number.isFinite(
-        normalizedTotalFee,
-      ) ||
-      normalizedTotalFee <= 0
-    ) {
-      throw new BadRequestException(
-        'Total fee must be greater than 0',
-      );
+    if (!Number.isFinite(normalizedTotalFee) || normalizedTotalFee <= 0) {
+      throw new BadRequestException('Total fee must be greater than 0');
     }
 
-    if (
-      !Number.isInteger(
-        normalizedTotalFee,
-      )
-    ) {
+    if (!Number.isInteger(normalizedTotalFee)) {
       throw new BadRequestException(
         'Monthly total fee must be a whole rupee amount without decimals',
       );
     }
 
-    if (
-      normalizedTotalFee <
-      selectedMonths
-    ) {
+    if (normalizedTotalFee < selectedMonths) {
       throw new BadRequestException(
         'Monthly duration is too high for the configured total fee',
       );
     }
 
-    const baseAmount =
-      Math.floor(
-        normalizedTotalFee /
-          selectedMonths,
-      );
+    const baseAmount = Math.floor(normalizedTotalFee / selectedMonths);
 
-    const finalAmount =
-      normalizedTotalFee -
-      baseAmount *
-        (selectedMonths - 1);
+    const finalAmount = normalizedTotalFee - baseAmount * (selectedMonths - 1);
 
     return Array.from(
       {
-        length:
-          selectedMonths,
+        length: selectedMonths,
       },
       (_, index) => ({
-        installmentNumber:
-          index + 1,
+        installmentNumber: index + 1,
 
-        amount:
-          index ===
-          selectedMonths - 1
-            ? finalAmount
-            : baseAmount,
+        amount: index === selectedMonths - 1 ? finalAmount : baseAmount,
 
-        status:
-          'unpaid' as
-            | 'unpaid'
-            | 'paid',
+        status: 'unpaid',
 
-        paidAt:
-          undefined,
+        paidAt: undefined,
 
-        paymentId:
-          undefined,
+        paymentId: undefined,
       }),
     );
   }
 
-  private ensureMonthlyInstallments(
-    student: StudentDocument,
-  ) {
+  private ensureMonthlyInstallments(student: StudentDocument) {
+    if (student.feeType !== 'monthly') {
+      return;
+    }
+
+    const selectedMonths = Number(student.selectedMonths || 0);
+
+    if (!Number.isInteger(selectedMonths) || selectedMonths < 1) {
+      throw new BadRequestException('Monthly duration is not configured');
+    }
+
     if (
-      student.feeType !==
-      'monthly'
+      Array.isArray(student.monthlyInstallments) &&
+      student.monthlyInstallments.length === selectedMonths
     ) {
       return;
     }
 
-    const selectedMonths =
-      Number(
-        student.selectedMonths ||
-          0,
-      );
-
-    if (
-      !Number.isInteger(
-        selectedMonths,
-      ) ||
-      selectedMonths < 1
-    ) {
-      throw new BadRequestException(
-        'Monthly duration is not configured',
-      );
-    }
-
-    if (
-      Array.isArray(
-        student.monthlyInstallments,
-      ) &&
-      student.monthlyInstallments.length ===
-        selectedMonths
-    ) {
-      return;
-    }
-
-    const installments =
-      this.buildMonthlyInstallments(
-        Number(
-          student.totalFee ||
-            0,
-        ),
-        selectedMonths,
-      );
+    const installments = this.buildMonthlyInstallments(
+      Number(student.totalFee || 0),
+      selectedMonths,
+    );
 
     /*
      * Backward compatibility for students created
      * before installment schedules existed.
      */
-    const oldPaidMonths =
-      Math.min(
-        Number(
-          student.paidMonths ||
-            0,
-        ),
-        selectedMonths,
-      );
+    const oldPaidMonths = Math.min(
+      Number(student.paidMonths || 0),
+      selectedMonths,
+    );
 
-    for (
-      let index = 0;
-      index < oldPaidMonths;
-      index += 1
-    ) {
-      installments[index].status =
-        'paid';
+    for (let index = 0; index < oldPaidMonths; index += 1) {
+      installments[index].status = 'paid';
     }
 
-    student.monthlyInstallments =
-      installments;
+    student.monthlyInstallments = installments;
   }
 
-  private recalculateMonthlyStudent(
-    student: StudentDocument,
-  ) {
-    const installments =
-      Array.isArray(
-        student.monthlyInstallments,
-      )
-        ? student.monthlyInstallments
-        : [];
+  private recalculateMonthlyStudent(student: StudentDocument) {
+    const installments = Array.isArray(student.monthlyInstallments)
+      ? student.monthlyInstallments
+      : [];
 
-    const paidInstallments =
-      installments.filter(
-        (installment) =>
-          installment.status ===
-          'paid',
-      );
+    const paidInstallments = installments.filter(
+      (installment) => installment.status === 'paid',
+    );
 
-    const paidAmount =
-      this.roundMoney(
-        paidInstallments.reduce(
-          (
-            total,
-            installment,
-          ) =>
-            total +
-            Number(
-              installment.amount ||
-                0,
-            ),
-          0,
-        ),
-      );
+    const paidAmount = this.roundMoney(
+      paidInstallments.reduce(
+        (total, installment) => total + Number(installment.amount || 0),
+        0,
+      ),
+    );
 
-    const totalFee =
-      this.roundMoney(
-        Number(
-          student.totalFee ||
-            0,
-        ),
-      );
+    const totalFee = this.roundMoney(Number(student.totalFee || 0));
 
-    const pendingAmount =
-      this.roundMoney(
-        Math.max(
-          0,
-          totalFee -
-            paidAmount,
-        ),
-      );
+    const pendingAmount = this.roundMoney(Math.max(0, totalFee - paidAmount));
 
-    student.paidMonths =
-      paidInstallments.length;
+    student.paidMonths = paidInstallments.length;
 
-    student.paidAmount =
-      Math.min(
-        paidAmount,
-        totalFee,
-      );
+    student.paidAmount = Math.min(paidAmount, totalFee);
 
-    student.pendingAmount =
-      pendingAmount;
+    student.pendingAmount = pendingAmount;
 
-    if (
-      paidInstallments.length ===
-      0
-    ) {
-      student.paymentStatus =
-        'unpaid';
+    if (paidInstallments.length === 0) {
+      student.paymentStatus = 'unpaid';
     } else if (
-      paidInstallments.length ===
-        installments.length &&
+      paidInstallments.length === installments.length &&
       pendingAmount <= 0
     ) {
-      student.paymentStatus =
-        'paid';
+      student.paymentStatus = 'paid';
     } else {
-      student.paymentStatus =
-        'partial';
+      student.paymentStatus = 'partial';
     }
   }
 
@@ -370,25 +223,17 @@ export class PaymentsService {
     student: StudentDocument,
     mode: 'common' | 'course',
   ) {
-    const paidAmount =
-      Number(
-        student.paidAmount || 0,
-      );
+    const paidAmount = Number(student.paidAmount || 0);
 
     /*
      * A legacy Monthly plan must never be overwritten by
      * Common or Course Wise fee setup.
      */
-    if (
-      student.feeSetupCompleted &&
-      student.feeType ===
-        'monthly'
-    ) {
+    if (student.feeSetupCompleted && student.feeType === 'monthly') {
       return {
         allowed: false,
 
-        reason:
-          'Monthly fee plan is already active',
+        reason: 'Monthly fee plan is already active',
       };
     }
 
@@ -396,8 +241,7 @@ export class PaymentsService {
       return {
         allowed: false,
 
-        reason:
-          'Payment already started for this student',
+        reason: 'Payment already started for this student',
       };
     }
 
@@ -412,14 +256,12 @@ export class PaymentsService {
     if (
       mode === 'common' &&
       student.feeSetupCompleted &&
-      student.feeSetupSource ===
-        'course'
+      student.feeSetupSource === 'course'
     ) {
       return {
         allowed: false,
 
-        reason:
-          'Course wise fee is already configured for this student',
+        reason: 'Course wise fee is already configured for this student',
       };
     }
 
@@ -436,7 +278,9 @@ export class PaymentsService {
       throw new BadRequestException('Total fee must be greater than 0');
     }
     if (!isValidFeeDueDay(data.feeDueDay)) {
-      throw new BadRequestException('Due Day must be a whole number between 1 and 31');
+      throw new BadRequestException(
+        'Due Day must be a whole number between 1 and 31',
+      );
     }
     const feeStartingDate = this.getTodayStart();
     const feeDueDate = computeFeeDueDate(data.feeDueDay, feeStartingDate);
@@ -503,7 +347,8 @@ export class PaymentsService {
             !student ||
             !notificationSettings.whatsappEnabled ||
             student.muteAllFeeNotifications
-          ) continue;
+          )
+            continue;
           const pdfBuffer =
             await this.invoiceService.generateInvoicePdfByDocument(invoice);
           await this.whatsappService.sendFeePaymentInvoice({
@@ -526,357 +371,222 @@ export class PaymentsService {
         }
       }
     };
-    await Promise.all(
-      Array.from({ length: concurrency }, () => worker()),
-    );
+    await Promise.all(Array.from({ length: concurrency }, () => worker()));
   }
 
-  async setFeeDueDate(
-    feeDueDate: string,
-  ) {
-    const parsedDate =
-      new Date(
-        `${feeDueDate}T00:00:00`,
-      );
+  async setFeeDueDate(feeDueDate: string) {
+    const parsedDate = new Date(`${feeDueDate}T00:00:00`);
 
-    if (
-      Number.isNaN(
-        parsedDate.getTime(),
-      )
-    ) {
-      throw new BadRequestException(
-        'Invalid fee due date',
-      );
+    if (Number.isNaN(parsedDate.getTime())) {
+      throw new BadRequestException('Invalid fee due date');
     }
 
-    let setting =
-      await this.paymentSettingModel.findOne({
-        isActive: true,
-      });
+    let setting = await this.paymentSettingModel.findOne({
+      isActive: true,
+    });
 
     if (!setting) {
-      setting =
-        new this.paymentSettingModel({
-          feeDueDate:
-            parsedDate,
+      setting = new this.paymentSettingModel({
+        feeDueDate: parsedDate,
 
-          isActive:
-            true,
-        });
+        isActive: true,
+      });
     } else {
-      setting.feeDueDate =
-        parsedDate;
+      setting.feeDueDate = parsedDate;
     }
 
     await setting.save();
 
     return {
-      message:
-        'Fee due date updated successfully',
+      message: 'Fee due date updated successfully',
 
-      feeDueDate:
-        setting.feeDueDate,
+      feeDueDate: setting.feeDueDate,
     };
   }
 
   async getFeeDueDate() {
-    const setting =
-      await this.paymentSettingModel
-        .findOne({
-          isActive: true,
-        })
-        .sort({
-          updatedAt: -1,
-        });
+    const setting = await this.paymentSettingModel
+      .findOne({
+        isActive: true,
+      })
+      .sort({
+        updatedAt: -1,
+      });
 
     return {
-      feeDueDate:
-        setting?.feeDueDate ||
-        null,
+      feeDueDate: setting?.feeDueDate || null,
     };
   }
 
   async getPublicPaymentSettings() {
-    const setting =
-      await this.paymentSettingModel
-        .findOne({
-          isActive: true,
-        })
-        .sort({
-          updatedAt: -1,
-        });
+    const setting = await this.paymentSettingModel
+      .findOne({
+        isActive: true,
+      })
+      .sort({
+        updatedAt: -1,
+      });
 
     return {
-      upiId:
-        setting?.upiId ||
-        '',
+      upiId: setting?.upiId || '',
 
-      receiverName:
-        setting?.receiverName ||
-        '',
+      receiverName: setting?.receiverName || '',
 
-      paymentPhone:
-        setting?.paymentPhone ||
-        '',
+      paymentPhone: setting?.paymentPhone || '',
 
-      upiQrImage:
-        setting?.upiQrImage ||
-        '',
+      upiQrImage: setting?.upiQrImage || '',
 
-      feeDueDate:
-        setting?.feeDueDate ||
-        null,
+      feeDueDate: setting?.feeDueDate || null,
     };
   }
 
-  async updatePublicPaymentSettings(
-    data: {
-      upiId?: string;
-      receiverName?: string;
-      paymentPhone?: string;
-      upiQrImage?: string;
-    },
-  ) {
-    const upiId =
-      String(
-        data.upiId ||
-          '',
-      ).trim();
+  async updatePublicPaymentSettings(data: {
+    upiId?: string;
+    receiverName?: string;
+    paymentPhone?: string;
+    upiQrImage?: string;
+  }) {
+    const upiId = String(data.upiId || '').trim();
 
-    const receiverName =
-      String(
-        data.receiverName ||
-          '',
-      ).trim();
+    const receiverName = String(data.receiverName || '').trim();
 
-    const paymentPhone =
-      String(
-        data.paymentPhone ||
-          '',
-      )
-        .replace(
-          /\D/g,
-          '',
-        )
-        .trim();
+    const paymentPhone = String(data.paymentPhone || '')
+      .replace(/\D/g, '')
+      .trim();
 
-    const upiQrImage =
-      String(
-        data.upiQrImage ||
-          '',
-      ).trim();
+    const upiQrImage = String(data.upiQrImage || '').trim();
 
-    if (
-      !upiId ||
-      !upiId.includes('@')
-    ) {
-      throw new BadRequestException(
-        'Enter a valid UPI ID',
-      );
+    if (!upiId || !upiId.includes('@')) {
+      throw new BadRequestException('Enter a valid UPI ID');
     }
 
     if (!receiverName) {
-      throw new BadRequestException(
-        'Receiver name is required',
-      );
+      throw new BadRequestException('Receiver name is required');
     }
 
-    if (
-      !/^[6-9]\d{9}$/.test(
-        paymentPhone,
-      )
-    ) {
+    if (!/^[6-9]\d{9}$/.test(paymentPhone)) {
       throw new BadRequestException(
         'Enter a valid 10 digit payment phone number',
       );
     }
 
     if (!upiQrImage) {
-      throw new BadRequestException(
-        'Payment QR image is required',
-      );
+      throw new BadRequestException('Payment QR image is required');
     }
 
-    let setting =
-      await this.paymentSettingModel
-        .findOne({
-          isActive: true,
-        })
-        .sort({
-          updatedAt: -1,
-        });
+    let setting = await this.paymentSettingModel
+      .findOne({
+        isActive: true,
+      })
+      .sort({
+        updatedAt: -1,
+      });
 
     if (!setting) {
-      setting =
-        new this.paymentSettingModel({
-          feeDueDate:
-            new Date(),
+      setting = new this.paymentSettingModel({
+        feeDueDate: new Date(),
 
-          isActive:
-            true,
-        });
+        isActive: true,
+      });
     }
 
-    setting.upiId =
-      upiId;
+    setting.upiId = upiId;
 
-    setting.receiverName =
-      receiverName;
+    setting.receiverName = receiverName;
 
-    setting.paymentPhone =
-      paymentPhone;
+    setting.paymentPhone = paymentPhone;
 
-    setting.upiQrImage =
-      upiQrImage;
+    setting.upiQrImage = upiQrImage;
 
-    setting.isActive =
-      true;
+    setting.isActive = true;
 
     await setting.save();
 
     return {
-      message:
-        'UPI payment settings updated successfully',
+      message: 'UPI payment settings updated successfully',
 
-      upiId:
-        setting.upiId,
+      upiId: setting.upiId,
 
-      receiverName:
-        setting.receiverName,
+      receiverName: setting.receiverName,
 
-      paymentPhone:
-        setting.paymentPhone,
+      paymentPhone: setting.paymentPhone,
 
-      upiQrImage:
-        setting.upiQrImage,
+      upiQrImage: setting.upiQrImage,
 
-      feeDueDate:
-        setting.feeDueDate,
+      feeDueDate: setting.feeDueDate,
     };
   }
 
-  private sanitizePublicStudentId(
-    studentId: string,
-  ) {
-    const cleanStudentId =
-      String(
-        studentId ||
-          '',
-      )
-        .replace(
-          /\{\{1\}\}/g,
-          '',
-        )
-        .split('?')[0]
-        .trim();
+  private sanitizePublicStudentId(studentId: string) {
+    const cleanStudentId = String(studentId || '')
+      .replace(/\{\{1\}\}/g, '')
+      .split('?')[0]
+      .trim();
 
-    if (
-      !/^[a-fA-F0-9]{24}$/.test(
-        cleanStudentId,
-      )
-    ) {
-      throw new BadRequestException(
-        'Invalid student payment link',
-      );
+    if (!/^[a-fA-F0-9]{24}$/.test(cleanStudentId)) {
+      throw new BadRequestException('Invalid student payment link');
     }
 
     return cleanStudentId;
   }
 
-  async getPublicStudentPayment(
-    studentId: string,
-  ) {
-    const cleanStudentId =
-      this.sanitizePublicStudentId(
-        studentId,
-      );
+  async getPublicStudentPayment(studentId: string) {
+    const cleanStudentId = this.sanitizePublicStudentId(studentId);
 
-    const student =
-      await this.studentModel.findById(
-        cleanStudentId,
-      );
+    const student = await this.studentModel.findById(cleanStudentId);
 
     if (!student) {
-      throw new NotFoundException(
-        'Student not found',
-      );
+      throw new NotFoundException('Student not found');
     }
 
-    if (
-      !student.feeSetupCompleted
-    ) {
-      throw new BadRequestException(
-        'Fee has not been setup for this student',
-      );
+    if (!student.feeSetupCompleted) {
+      throw new BadRequestException('Fee has not been setup for this student');
     }
 
-    const setting =
-      await this.paymentSettingModel
-        .findOne({
-          isActive: true,
-        })
-        .sort({
-          updatedAt: -1,
-        });
+    const setting = await this.paymentSettingModel
+      .findOne({
+        isActive: true,
+      })
+      .sort({
+        updatedAt: -1,
+      });
 
-    const hasPendingProof =
-      Boolean(
-        await this.paymentProofModel.exists({
-          studentId: student._id,
-          status: 'pending',
-        }),
-      );
+    const hasPendingProof = Boolean(
+      await this.paymentProofModel.exists({
+        studentId: student._id,
+        status: 'pending',
+      }),
+    );
 
     return {
       student: {
-        id:
-          student._id,
+        id: student._id,
 
-        studentName:
-          student.studentName,
+        studentName: student.studentName,
 
-        rollNo:
-          student.rollNo,
+        rollNo: student.rollNo,
 
-        course:
-          student.course,
+        course: student.course,
 
-        batch:
-          student.batch,
+        batch: student.batch,
 
-        paymentStatus:
-          student.paymentStatus,
+        paymentStatus: student.paymentStatus,
 
-        paymentAmount:
-          Number(
-            student.pendingAmount ||
-              0,
-          ),
+        paymentAmount: Number(student.pendingAmount || 0),
 
         hasPendingProof,
       },
 
       payment: {
-        feeDueDate:
-          student.feeDueDate ||
-          setting?.feeDueDate ||
-          null,
+        feeDueDate: student.feeDueDate || setting?.feeDueDate || null,
 
-        upiId:
-          setting?.upiId ||
-          '',
+        upiId: setting?.upiId || '',
 
-        receiverName:
-          setting?.receiverName ||
-          '',
+        receiverName: setting?.receiverName || '',
 
-        paymentPhone:
-          setting?.paymentPhone ||
-          '',
+        paymentPhone: setting?.paymentPhone || '',
 
-        upiQrImage:
-          setting?.upiQrImage ||
-          '',
+        upiQrImage: setting?.upiQrImage || '',
       },
     };
   }
@@ -900,57 +610,39 @@ export class PaymentsService {
       amountClaimed?: number;
     },
   ) {
-    const cleanStudentId =
-      this.sanitizePublicStudentId(
-        studentId,
-      );
+    const cleanStudentId = this.sanitizePublicStudentId(studentId);
 
-    const student =
-      await this.studentModel.findById(
-        cleanStudentId,
-      );
+    const student = await this.studentModel.findById(cleanStudentId);
 
     if (!student) {
-      throw new NotFoundException(
-        'Student not found',
-      );
+      throw new NotFoundException('Student not found');
     }
 
     if (!student.feeSetupCompleted) {
-      throw new BadRequestException(
-        'Fee has not been setup for this student',
-      );
+      throw new BadRequestException('Fee has not been setup for this student');
     }
 
     if (student.paymentStatus === 'paid') {
-      throw new BadRequestException(
-        'Fee is already fully paid',
-      );
+      throw new BadRequestException('Fee is already fully paid');
     }
 
     if (
       typeof data.imageData !== 'string' ||
       !/^data:image\/(png|jpe?g|webp);base64,/i.test(data.imageData)
     ) {
-      throw new BadRequestException(
-        'Upload a valid image (PNG, JPG or WEBP)',
-      );
+      throw new BadRequestException('Upload a valid image (PNG, JPG or WEBP)');
     }
 
-    if (
-      data.imageData.length >
-      PaymentsService.MAX_PROOF_IMAGE_DATA_LENGTH
-    ) {
+    if (data.imageData.length > PaymentsService.MAX_PROOF_IMAGE_DATA_LENGTH) {
       throw new BadRequestException(
         'Image is too large. Please upload a smaller screenshot',
       );
     }
 
-    const existingPendingProof =
-      await this.paymentProofModel.findOne({
-        studentId: student._id,
-        status: 'pending',
-      });
+    const existingPendingProof = await this.paymentProofModel.findOne({
+      studentId: student._id,
+      status: 'pending',
+    });
 
     if (existingPendingProof) {
       throw new BadRequestException(
@@ -1058,18 +750,11 @@ export class PaymentsService {
       });
   }
 
-  async getPaymentById(
-    id: string,
-  ) {
-    const payment =
-      await this.paymentModel.findById(
-        id,
-      );
+  async getPaymentById(id: string) {
+    const payment = await this.paymentModel.findById(id);
 
     if (!payment) {
-      throw new NotFoundException(
-        'Payment record not found',
-      );
+      throw new NotFoundException('Payment record not found');
     }
 
     return payment;
@@ -1084,91 +769,57 @@ export class PaymentsService {
   async setupStudentFee(
     studentId: string,
     data: FeeSetupData,
-    setupSource:
-      | 'individual'
-      | 'common'
-      | 'course' =
-      'individual',
+    setupSource: 'individual' | 'common' | 'course' = 'individual',
+    actingUser?: AuditActor,
   ) {
-    const student =
-      await this.studentModel.findById(
-        studentId,
-      );
+    const student = await this.studentModel.findById(studentId);
 
     if (!student) {
-      throw new NotFoundException(
-        'Student not found',
-      );
+      throw new NotFoundException('Student not found');
     }
 
-    if (
-      student.feeSetupCompleted &&
-      student.paymentStatus !== 'paid'
-    ) {
+    const beforeState = {
+      totalFee: student.totalFee,
+      paidAmount: student.paidAmount,
+      pendingAmount: student.pendingAmount,
+      paymentStatus: student.paymentStatus,
+    };
+
+    if (student.feeSetupCompleted && student.paymentStatus !== 'paid') {
       throw new BadRequestException(
         'Complete the current fee before assigning the next fee',
       );
     }
 
-    const feeSettings =
-      await this.settingsService.getFeeSettings();
+    const feeSettings = await this.settingsService.getFeeSettings();
 
-    if (
-      !feeSettings.yearlyFeeEnabled
-    ) {
-      throw new BadRequestException(
-        'Fee setup is disabled in settings',
-      );
+    if (!feeSettings.yearlyFeeEnabled) {
+      throw new BadRequestException('Fee setup is disabled in settings');
     }
 
-    const totalFee =
-      this.roundMoney(
-        Number(
-          data.totalFee,
-        ),
-      );
+    const totalFee = this.roundMoney(Number(data.totalFee));
 
-    if (
-      !Number.isFinite(
-        totalFee,
-      ) ||
-      totalFee <= 0
-    ) {
-      throw new BadRequestException(
-        'Total fee must be greater than 0',
-      );
+    if (!Number.isFinite(totalFee) || totalFee <= 0) {
+      throw new BadRequestException('Total fee must be greater than 0');
     }
 
-    if (
-      !isValidFeeDueDay(
-        data.feeDueDay,
-      )
-    ) {
+    if (!isValidFeeDueDay(data.feeDueDay)) {
       throw new BadRequestException(
         'Due Day must be a whole number between 1 and 31',
       );
     }
 
-    const feeStartingDate =
-      this.getTodayStart();
+    const feeStartingDate = this.getTodayStart();
 
-    const feeDueDate =
-      computeFeeDueDate(
-        data.feeDueDay,
-        feeStartingDate,
-      );
+    const feeDueDate = computeFeeDueDate(data.feeDueDay, feeStartingDate);
 
-    student.totalFee =
-      totalFee;
+    student.totalFee = totalFee;
 
-    student.feeType =
-      'yearly';
+    student.feeType = 'yearly';
 
-    student.feeSetupSource =
-      setupSource;
+    student.feeSetupSource = setupSource;
 
-    student.feeStartingDate =
-      feeStartingDate;
+    student.feeStartingDate = feeStartingDate;
 
     // A genuinely new cycle begins here (first-ever setup or "Assign Next
     // Fee") — stamp a fresh cycle marker so payments collected from now on
@@ -1181,79 +832,74 @@ export class PaymentsService {
     // reassigned a next fee on the SAME day would get an identical marker
     // for both cycles. A fresh full-precision timestamp guarantees each
     // real cycle-start event gets its own value.
-    student.feeCycleStartedAt =
-      new Date();
+    student.feeCycleStartedAt = new Date();
 
-    student.feeDueDay =
-      data.feeDueDay;
+    student.feeDueDay = data.feeDueDay;
 
-    student.feeDueDate =
-      feeDueDate;
+    student.feeDueDate = feeDueDate;
 
-    student.feeEndingDate =
-      undefined;
+    student.feeEndingDate = undefined;
 
-    student.feeSetupCompleted =
-      true;
+    student.feeSetupCompleted = true;
 
-    student.paidAmount =
-      0;
+    student.paidAmount = 0;
 
-    student.pendingAmount =
-      totalFee;
+    student.pendingAmount = totalFee;
 
-    student.paymentStatus =
-      'unpaid';
+    student.paymentStatus = 'unpaid';
 
-    student.paymentMethod =
-      undefined;
+    student.paymentMethod = undefined;
 
-    student.paidMonths =
-      0;
+    student.paidMonths = 0;
 
-    student.lastFeeReminderSentAt =
-      undefined;
+    student.lastFeeReminderSentAt = undefined;
 
-    student.feeReminderCount =
-      0;
+    student.feeReminderCount = 0;
 
-    student.selectedMonths =
-      undefined;
+    student.selectedMonths = undefined;
 
-    student.monthlyAmount =
-      0;
+    student.monthlyAmount = 0;
 
-    student.monthlyInstallments =
-      [];
+    student.monthlyInstallments = [];
 
     await student.save();
+
+    if (actingUser) {
+      void this.auditLogService.record({
+        action: 'fee.setup',
+        targetId: student._id.toString(),
+        performedBy: actingUser,
+        amount: student.totalFee,
+        before: beforeState,
+        after: {
+          totalFee: student.totalFee,
+          paidAmount: student.paidAmount,
+          pendingAmount: student.pendingAmount,
+          paymentStatus: student.paymentStatus,
+        },
+      });
+    }
 
     // Persisting the student fee is the only work that must finish before the
     // admin gets a response. Invoice/PDF/WhatsApp processing continues safely
     // in the background, keeping individual setup close to database latency.
-    void this.processBulkFeeInvoices([
-      student._id.toString(),
-    ]);
+    void this.processBulkFeeInvoices([student._id.toString()]);
 
     return {
       message: 'Student fee setup completed successfully',
 
-      setupMode:
-        'individual',
+      setupMode: 'individual',
 
       student,
 
       invoice: null,
 
       calculation: {
-        totalFee:
-          student.totalFee,
+        totalFee: student.totalFee,
 
-        feeDueDay:
-          student.feeDueDay,
+        feeDueDay: student.feeDueDay,
 
-        feeDueDate:
-          student.feeDueDate,
+        feeDueDate: student.feeDueDate,
       },
     };
   }
@@ -1267,6 +913,7 @@ export class PaymentsService {
   async editStudentFee(
     studentId: string,
     data: FeeSetupData,
+    actingUser?: AuditActor,
   ) {
     const student = await this.studentModel.findById(studentId);
 
@@ -1277,6 +924,13 @@ export class PaymentsService {
     if (!student.feeSetupCompleted) {
       throw new BadRequestException('Student fee setup is not completed');
     }
+
+    const beforeState = {
+      totalFee: student.totalFee,
+      paidAmount: student.paidAmount,
+      pendingAmount: student.pendingAmount,
+      paymentStatus: student.paymentStatus,
+    };
 
     const totalFee = this.roundMoney(Number(data.totalFee));
     const paidAmount = this.roundMoney(Number(student.paidAmount || 0));
@@ -1298,34 +952,94 @@ export class PaymentsService {
     }
 
     if (!isValidFeeDueDay(data.feeDueDay)) {
-      throw new BadRequestException('Due Day must be a whole number between 1 and 31');
+      throw new BadRequestException(
+        'Due Day must be a whole number between 1 and 31',
+      );
     }
 
     const feeStartingDate = this.getTodayStart();
     const feeDueDate = computeFeeDueDate(data.feeDueDay, feeStartingDate);
 
-    const pendingAmount = this.roundMoney(totalFee - paidAmount);
-    student.totalFee = totalFee;
-    student.feeType = 'yearly';
-    student.feeSetupSource = 'individual';
-    student.feeStartingDate = feeStartingDate;
-    student.feeDueDay = data.feeDueDay;
-    student.feeDueDate = feeDueDate;
-    student.feeEndingDate = undefined;
-    student.pendingAmount = pendingAmount;
-    student.paymentStatus = pendingAmount <= 0 ? 'paid' : paidAmount > 0 ? 'partial' : 'unpaid';
-    student.selectedMonths = undefined;
-    student.monthlyAmount = 0;
-    student.monthlyInstallments = [];
-    student.paidMonths = 0;
-    student.lastFeeReminderSentAt = undefined;
-    student.feeReminderCount = 0;
-    await student.save();
+    // Atomic aggregation-pipeline update (same technique already used for
+    // concurrent payment collection) instead of read-modify-write on the
+    // Mongoose document: pendingAmount/paymentStatus are computed from
+    // paidAmount as it is IN THE DATABASE at write time, not from the
+    // `paidAmount` snapshot read above — so a payment collected between
+    // that read and this write can never be silently overwritten by a
+    // stale pendingAmount, and two concurrent fee edits can never produce
+    // a totalFee/paidAmount/pendingAmount combination that doesn't add up.
+    // The `paidAmount: { $lte: totalFee }` filter re-checks the "cannot
+    // reduce total below what's already paid" rule against that same live
+    // value, closing the same race for the validation itself.
+    const updatedStudent = await this.studentModel.findOneAndUpdate(
+      { _id: student._id, paidAmount: { $lte: totalFee } },
+      [
+        {
+          $set: {
+            totalFee,
+            feeType: 'yearly',
+            feeSetupSource: 'individual',
+            feeStartingDate,
+            feeDueDay: data.feeDueDay,
+            feeDueDate,
+            feeEndingDate: '$REMOVE',
+            pendingAmount: {
+              $round: [{ $subtract: [totalFee, '$paidAmount'] }, 2],
+            },
+            selectedMonths: '$REMOVE',
+            monthlyAmount: 0,
+            monthlyInstallments: [],
+            paidMonths: 0,
+            lastFeeReminderSentAt: '$REMOVE',
+            feeReminderCount: 0,
+          },
+        },
+        {
+          $set: {
+            paymentStatus: {
+              $cond: [
+                { $lte: ['$pendingAmount', 0] },
+                'paid',
+                { $cond: [{ $gt: ['$paidAmount', 0] }, 'partial', 'unpaid'] },
+              ],
+            },
+          },
+        },
+      ],
+      { returnDocument: 'after', updatePipeline: true },
+    );
+
+    if (!updatedStudent) {
+      const latest = await this.studentModel
+        .findById(studentId)
+        .select('paidAmount')
+        .lean();
+
+      throw new BadRequestException(
+        `Total fee cannot be less than the already paid amount ${this.roundMoney(Number(latest?.paidAmount || 0))}`,
+      );
+    }
+
+    if (actingUser) {
+      void this.auditLogService.record({
+        action: 'fee.edit',
+        targetId: updatedStudent._id.toString(),
+        performedBy: actingUser,
+        amount: updatedStudent.totalFee,
+        before: beforeState,
+        after: {
+          totalFee: updatedStudent.totalFee,
+          paidAmount: updatedStudent.paidAmount,
+          pendingAmount: updatedStudent.pendingAmount,
+          paymentStatus: updatedStudent.paymentStatus,
+        },
+      });
+    }
 
     void (async () => {
       try {
         const invoice = await this.invoiceService.createFeeSetupInvoice(
-          student._id.toString(),
+          updatedStudent._id.toString(),
         );
         if (!invoice) return;
 
@@ -1333,108 +1047,80 @@ export class PaymentsService {
           await this.settingsService.getNotificationSettings();
         if (
           !notificationSettings.whatsappEnabled ||
-          student.muteAllFeeNotifications
-        ) return;
+          updatedStudent.muteAllFeeNotifications
+        )
+          return;
 
         const pdfBuffer =
           await this.invoiceService.generateInvoicePdfByDocument(invoice);
         await this.whatsappService.sendFeePaymentInvoice({
-          phone: student.phone,
-          parentName: student.parentName,
-          studentName: student.studentName,
-          studentId: student._id.toString(),
-          totalFee: Number(student.totalFee || 0),
-          feeType: student.feeType!,
-          pendingAmount: Number(student.pendingAmount || 0),
-          feeEndingDate: student.feeDueDate!,
+          phone: updatedStudent.phone,
+          parentName: updatedStudent.parentName,
+          studentName: updatedStudent.studentName,
+          studentId: updatedStudent._id.toString(),
+          totalFee: Number(updatedStudent.totalFee || 0),
+          feeType: updatedStudent.feeType!,
+          pendingAmount: Number(updatedStudent.pendingAmount || 0),
+          feeEndingDate: updatedStudent.feeDueDate!,
           pdfBuffer,
           invoiceNumber: invoice.invoiceNumber,
         });
       } catch (error) {
-        console.error('Background edited fee invoice processing failed:', error);
+        console.error(
+          'Background edited fee invoice processing failed:',
+          error,
+        );
       }
     })();
 
     return {
       message: 'Fee details updated successfully',
-      student,
+      student: updatedStudent,
     };
   }
-  async setupCommonFee(
-    data: FeeSetupData,
-  ) {
-    const feeSettings =
-      await this.settingsService.getFeeSettings();
+  async setupCommonFee(data: FeeSetupData) {
+    const feeSettings = await this.settingsService.getFeeSettings();
 
-    if (
-      !feeSettings.commonFeeSetupEnabled
-    ) {
-      throw new BadRequestException(
-        'Common fee setup is disabled in settings',
-      );
+    if (!feeSettings.commonFeeSetupEnabled) {
+      throw new BadRequestException('Common fee setup is disabled in settings');
     }
 
-    if (
-      !feeSettings.yearlyFeeEnabled
-    ) {
-      throw new BadRequestException(
-        'Fee setup is disabled in settings',
-      );
+    if (!feeSettings.yearlyFeeEnabled) {
+      throw new BadRequestException('Fee setup is disabled in settings');
     }
 
     const bulkData: FeeSetupData = {
       ...data,
     };
 
-    const students =
-      await this.studentModel.find({});
+    const students = await this.studentModel.find({});
 
-    if (
-      students.length === 0
-    ) {
-      throw new NotFoundException(
-        'No students found',
-      );
+    if (students.length === 0) {
+      throw new NotFoundException('No students found');
     }
 
-    const successStudents:
-      any[] = [];
+    const successStudents: any[] = [];
 
-    const skippedStudents:
-      any[] = [];
+    const skippedStudents: any[] = [];
 
-    const failedStudents:
-      any[] = [];
+    const failedStudents: any[] = [];
 
     const eligibleStudents: StudentDocument[] = [];
 
-    for (
-      const student of students
-    ) {
-      const validation =
-        this.validateBulkStudent(
-          student,
-          'common',
-        );
+    for (const student of students) {
+      const validation = this.validateBulkStudent(student, 'common');
 
-      if (
-        !validation.allowed
-      ) {
+      if (!validation.allowed) {
         skippedStudents.push({
-          studentId:
-            student._id,
+          studentId: student._id,
 
-          studentName:
-            student.studentName,
+          studentName: student.studentName,
 
-          rollNo:
-            student.rollNo,
+          rollNo: student.rollNo,
 
-          course:
-            student.course,
+          course: student.course,
 
-          reason:
-            validation.reason,
+          reason: validation.reason,
         });
 
         continue;
@@ -1443,81 +1129,54 @@ export class PaymentsService {
       try {
         eligibleStudents.push(student);
         successStudents.push({
-          studentId:
-            student._id,
+          studentId: student._id,
 
-          studentName:
-            student.studentName,
+          studentName: student.studentName,
 
-          rollNo:
-            student.rollNo,
+          rollNo: student.rollNo,
 
-          course:
-            student.course,
+          course: student.course,
 
           invoiceNumber: null,
         });
       } catch (error) {
         failedStudents.push({
-          studentId:
-            student._id,
+          studentId: student._id,
 
-          studentName:
-            student.studentName,
+          studentName: student.studentName,
 
-          rollNo:
-            student.rollNo,
+          rollNo: student.rollNo,
 
-          course:
-            student.course,
+          course: student.course,
 
-          reason:
-            error instanceof Error
-              ? error.message
-              : String(error),
+          reason: error instanceof Error ? error.message : String(error),
         });
       }
     }
 
-    await this.applyBulkYearlyFee(
-      eligibleStudents,
-      'common',
-      bulkData,
-    );
+    await this.applyBulkYearlyFee(eligibleStudents, 'common', bulkData);
 
     return {
-      message:
-        'Common fee setup completed',
+      message: 'Common fee setup completed',
 
-      setupMode:
-        'common',
+      setupMode: 'common',
 
-      totalStudents:
-        students.length,
+      totalStudents: students.length,
 
-      successCount:
-        successStudents.length,
+      successCount: successStudents.length,
 
-      skippedCount:
-        skippedStudents.length,
+      skippedCount: skippedStudents.length,
 
-      failedCount:
-        failedStudents.length,
+      failedCount: failedStudents.length,
 
       commonFee: {
-        totalFee:
-          Number(
-            bulkData.totalFee,
-          ),
+        totalFee: Number(bulkData.totalFee),
 
-        feeType:
-          'yearly',
+        feeType: 'yearly',
 
-        feeDueDay:
-          bulkData.feeDueDay,
+        feeDueDay: bulkData.feeDueDay,
 
-        selectedMonths:
-          null,
+        selectedMonths: null,
       },
 
       successStudents,
@@ -1534,112 +1193,68 @@ export class PaymentsService {
    * ==================================================
    */
 
-  async setupCourseWiseFee(
-    course: string,
-    data: FeeSetupData,
-  ) {
-    const feeSettings =
-      await this.settingsService.getFeeSettings();
+  async setupCourseWiseFee(course: string, data: FeeSetupData) {
+    const feeSettings = await this.settingsService.getFeeSettings();
 
-    if (
-      !feeSettings.courseWiseFeeSetupEnabled
-    ) {
+    if (!feeSettings.courseWiseFeeSetupEnabled) {
       throw new BadRequestException(
         'Course wise fee setup is disabled in settings',
       );
     }
 
-    if (
-      !feeSettings.yearlyFeeEnabled
-    ) {
-      throw new BadRequestException(
-        'Fee setup is disabled in settings',
-      );
+    if (!feeSettings.yearlyFeeEnabled) {
+      throw new BadRequestException('Fee setup is disabled in settings');
     }
 
     const bulkData: FeeSetupData = {
       ...data,
     };
 
-    const courseName =
-      decodeURIComponent(
-        String(
-          course || '',
-        ),
-      ).trim();
+    const courseName = decodeURIComponent(String(course || '')).trim();
 
     if (!courseName) {
-      throw new BadRequestException(
-        'Course is required',
-      );
+      throw new BadRequestException('Course is required');
     }
 
     /*
      * Case insensitive exact match.
      */
-    const escapedCourse =
-      courseName.replace(
-        /[.*+?^${}()|[\]\\]/g,
-        '\\$&',
-      );
+    const escapedCourse = courseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-    const students =
-      await this.studentModel.find({
-        course: {
-          $regex:
-            `^${escapedCourse}$`,
+    const students = await this.studentModel.find({
+      course: {
+        $regex: `^${escapedCourse}$`,
 
-          $options:
-            'i',
-        },
-      });
+        $options: 'i',
+      },
+    });
 
-    if (
-      students.length === 0
-    ) {
-      throw new NotFoundException(
-        `No students found for ${courseName}`,
-      );
+    if (students.length === 0) {
+      throw new NotFoundException(`No students found for ${courseName}`);
     }
 
-    const successStudents:
-      any[] = [];
+    const successStudents: any[] = [];
 
-    const skippedStudents:
-      any[] = [];
+    const skippedStudents: any[] = [];
 
-    const failedStudents:
-      any[] = [];
+    const failedStudents: any[] = [];
 
     const eligibleStudents: StudentDocument[] = [];
 
-    for (
-      const student of students
-    ) {
-      const validation =
-        this.validateBulkStudent(
-          student,
-          'course',
-        );
+    for (const student of students) {
+      const validation = this.validateBulkStudent(student, 'course');
 
-      if (
-        !validation.allowed
-      ) {
+      if (!validation.allowed) {
         skippedStudents.push({
-          studentId:
-            student._id,
+          studentId: student._id,
 
-          studentName:
-            student.studentName,
+          studentName: student.studentName,
 
-          rollNo:
-            student.rollNo,
+          rollNo: student.rollNo,
 
-          course:
-            student.course,
+          course: student.course,
 
-          reason:
-            validation.reason,
+          reason: validation.reason,
         });
 
         continue;
@@ -1648,84 +1263,56 @@ export class PaymentsService {
       try {
         eligibleStudents.push(student);
         successStudents.push({
-          studentId:
-            student._id,
+          studentId: student._id,
 
-          studentName:
-            student.studentName,
+          studentName: student.studentName,
 
-          rollNo:
-            student.rollNo,
+          rollNo: student.rollNo,
 
-          course:
-            student.course,
+          course: student.course,
 
           invoiceNumber: null,
         });
       } catch (error) {
         failedStudents.push({
-          studentId:
-            student._id,
+          studentId: student._id,
 
-          studentName:
-            student.studentName,
+          studentName: student.studentName,
 
-          rollNo:
-            student.rollNo,
+          rollNo: student.rollNo,
 
-          course:
-            student.course,
+          course: student.course,
 
-          reason:
-            error instanceof Error
-              ? error.message
-              : String(error),
+          reason: error instanceof Error ? error.message : String(error),
         });
       }
     }
 
-    await this.applyBulkYearlyFee(
-      eligibleStudents,
-      'course',
-      bulkData,
-    );
+    await this.applyBulkYearlyFee(eligibleStudents, 'course', bulkData);
 
     return {
-      message:
-        `${courseName} course fee setup completed`,
+      message: `${courseName} course fee setup completed`,
 
-      setupMode:
-        'course',
+      setupMode: 'course',
 
-      course:
-        courseName,
+      course: courseName,
 
-      totalStudents:
-        students.length,
+      totalStudents: students.length,
 
-      successCount:
-        successStudents.length,
+      successCount: successStudents.length,
 
-      skippedCount:
-        skippedStudents.length,
+      skippedCount: skippedStudents.length,
 
-      failedCount:
-        failedStudents.length,
+      failedCount: failedStudents.length,
 
       courseFee: {
-        totalFee:
-          Number(
-            bulkData.totalFee,
-          ),
+        totalFee: Number(bulkData.totalFee),
 
-        feeType:
-          'yearly',
+        feeType: 'yearly',
 
-        feeDueDay:
-          bulkData.feeDueDay,
+        feeDueDay: bulkData.feeDueDay,
 
-        selectedMonths:
-          null,
+        selectedMonths: null,
       },
 
       successStudents,
@@ -1745,30 +1332,27 @@ export class PaymentsService {
   async collectStudentPayment(
     studentId: string,
     data: {
-      paymentMethod:
-        | 'cash'
-        | 'bank'
-        | 'upi'
-        | 'qr';
+      paymentMethod: 'cash' | 'bank' | 'upi' | 'qr';
 
       amount?: number;
 
-      installmentNumber?:
-        number;
+      installmentNumber?: number;
 
       proofId?: string;
     },
+    actingUser?: AuditActor,
   ) {
-    const student =
-      await this.studentModel.findById(
-        studentId,
-      );
+    const student = await this.studentModel.findById(studentId);
 
     if (!student) {
-      throw new NotFoundException(
-        'Student not found',
-      );
+      throw new NotFoundException('Student not found');
     }
+
+    const beforeState = {
+      paidAmount: student.paidAmount,
+      pendingAmount: student.pendingAmount,
+      paymentStatus: student.paymentStatus,
+    };
 
     // When recording a payment off a student-uploaded proof, validate it
     // up front (before creating anything) so a stale/already-processed
@@ -1794,67 +1378,35 @@ export class PaymentsService {
     }
 
     if (String(student.feeType) === 'monthly') {
-      throw new BadRequestException('Monthly payment collection is no longer available');
-    }
-
-    if (
-      !student.feeSetupCompleted
-    ) {
       throw new BadRequestException(
-        'Student fee setup is not completed',
+        'Monthly payment collection is no longer available',
       );
     }
 
-    const totalFee =
-      this.roundMoney(
-        Number(
-          student.totalFee ||
-            0,
-        ),
-      );
-
-    const currentPendingAmount =
-      this.roundMoney(
-        Number(
-          student.pendingAmount ||
-            0,
-        ),
-      );
-
-    if (
-      currentPendingAmount <= 0 ||
-      student.paymentStatus ===
-        'paid'
-    ) {
-      throw new BadRequestException(
-        'Student fee is already fully paid',
-      );
+    if (!student.feeSetupCompleted) {
+      throw new BadRequestException('Student fee setup is not completed');
     }
 
-    let paymentAmount =
-      0;
+    const currentPendingAmount = this.roundMoney(
+      Number(student.pendingAmount || 0),
+    );
 
-    let installmentNumber:
-      number | undefined;
+    if (currentPendingAmount <= 0 || student.paymentStatus === 'paid') {
+      throw new BadRequestException('Student fee is already fully paid');
+    }
 
-    if (
-      student.feeType ===
-      'monthly'
-    ) {
-      this.ensureMonthlyInstallments(
-        student,
+    let paymentAmount = 0;
+
+    let installmentNumber: number | undefined;
+
+    if (student.feeType === 'monthly') {
+      this.ensureMonthlyInstallments(student);
+
+      const installments = student.monthlyInstallments || [];
+
+      const currentInstallment = installments.find(
+        (installment) => installment.status === 'unpaid',
       );
-
-      const installments =
-        student.monthlyInstallments ||
-        [];
-
-      const currentInstallment =
-        installments.find(
-          (installment) =>
-            installment.status ===
-            'unpaid',
-        );
 
       if (!currentInstallment) {
         throw new BadRequestException(
@@ -1863,36 +1415,20 @@ export class PaymentsService {
       }
 
       if (
-        data.installmentNumber !==
-          undefined &&
-        Number(
-          data.installmentNumber,
-        ) !==
-          Number(
-            currentInstallment.installmentNumber,
-          )
+        data.installmentNumber !== undefined &&
+        Number(data.installmentNumber) !==
+          Number(currentInstallment.installmentNumber)
       ) {
         throw new BadRequestException(
           `Month ${currentInstallment.installmentNumber} is the current payable installment`,
         );
       }
 
-      installmentNumber =
-        Number(
-          currentInstallment.installmentNumber,
-        );
+      installmentNumber = Number(currentInstallment.installmentNumber);
 
-      paymentAmount =
-        this.roundMoney(
-          Number(
-            currentInstallment.amount ||
-              0,
-          ),
-        );
+      paymentAmount = this.roundMoney(Number(currentInstallment.amount || 0));
 
-      if (
-        paymentAmount <= 0
-      ) {
+      if (paymentAmount <= 0) {
         throw new BadRequestException(
           'Current monthly installment amount is invalid',
         );
@@ -1902,164 +1438,152 @@ export class PaymentsService {
        * Do not mark the installment paid yet.
        * First create the Payment transaction successfully.
        */
-    } else if (
-      student.feeType === 'partial' ||
-      student.feeType === 'yearly'
-    ) {
-      const enteredAmount =
-        this.roundMoney(
-          Number(
-            data.amount,
-          ),
-        );
+    } else if (student.feeType === 'partial' || student.feeType === 'yearly') {
+      const enteredAmount = this.roundMoney(Number(data.amount));
 
-      if (
-        !Number.isFinite(
-          enteredAmount,
-        ) ||
-        enteredAmount <= 0
-      ) {
-        throw new BadRequestException(
-          'Enter a valid payment amount',
-        );
+      if (!Number.isFinite(enteredAmount) || enteredAmount <= 0) {
+        throw new BadRequestException('Enter a valid payment amount');
       }
 
-      if (
-        enteredAmount >
-        currentPendingAmount
-      ) {
+      if (enteredAmount > currentPendingAmount) {
         throw new BadRequestException(
           `Payment cannot be greater than pending amount ₹${currentPendingAmount}`,
         );
       }
 
-      paymentAmount =
-        enteredAmount;
-    } else {
-      throw new BadRequestException(
-        'Student fee type is not configured',
+      paymentAmount = enteredAmount;
+
+      // Atomic, concurrency-safe balance update. The filter's
+      // `pendingAmount: { $gte: paymentAmount }` is re-checked by MongoDB
+      // against the document's LIVE state at the instant this update runs —
+      // not the `currentPendingAmount` snapshot read at the top of this
+      // function — and the increment plus status recalculation happen as
+      // one atomic operation. Two payments submitted at nearly the same
+      // time are serialized by MongoDB itself: the second one's guard is
+      // evaluated against the first one's already-applied result, so
+      // together they can never overshoot the total fee, and neither
+      // payment's increment is ever lost to the other overwriting it.
+      const atomicallyUpdatedStudent = await this.studentModel.findOneAndUpdate(
+        {
+          _id: student._id,
+          pendingAmount: { $gte: paymentAmount },
+        },
+        [
+          {
+            $set: {
+              paidAmount: {
+                $round: [{ $add: ['$paidAmount', paymentAmount] }, 2],
+              },
+              pendingAmount: {
+                $round: [{ $subtract: ['$pendingAmount', paymentAmount] }, 2],
+              },
+              paymentMethod: data.paymentMethod,
+            },
+          },
+          {
+            $set: {
+              paymentStatus: {
+                $cond: [{ $lte: ['$pendingAmount', 0] }, 'paid', 'partial'],
+              },
+            },
+          },
+          {
+            $set: {
+              lastFeeReminderSentAt: {
+                $cond: [
+                  { $eq: ['$paymentStatus', 'paid'] },
+                  '$$REMOVE',
+                  '$lastFeeReminderSentAt',
+                ],
+              },
+            },
+          },
+        ],
+        {
+          returnDocument: 'after',
+          updatePipeline: true,
+        },
       );
+
+      if (!atomicallyUpdatedStudent) {
+        // Someone else's payment consumed the remaining balance between our
+        // read above and now — same "can't exceed pending amount" error,
+        // just caught at the one point that can actually guarantee it.
+        throw new BadRequestException(
+          `Payment cannot be greater than pending amount ₹${currentPendingAmount}`,
+        );
+      }
+
+      student.paidAmount = atomicallyUpdatedStudent.paidAmount;
+      student.pendingAmount = atomicallyUpdatedStudent.pendingAmount;
+      student.paymentStatus = atomicallyUpdatedStudent.paymentStatus;
+      student.paymentMethod = atomicallyUpdatedStudent.paymentMethod;
+      student.lastFeeReminderSentAt =
+        atomicallyUpdatedStudent.lastFeeReminderSentAt;
+    } else {
+      throw new BadRequestException('Student fee type is not configured');
     }
 
-    const payment =
-      await this.createPayment({
-        studentId:
-          student._id.toString(),
+    const payment = await this.createPayment({
+      studentId: student._id.toString(),
 
-        studentName:
-          student.studentName,
+      studentName: student.studentName,
 
-        phone:
-          student.phone,
+      phone: student.phone,
 
-        course:
-          student.course,
+      course: student.course,
 
-        amount:
-          paymentAmount,
+      amount: paymentAmount,
 
-        paymentMethod:
-          data.paymentMethod,
+      paymentMethod: data.paymentMethod,
 
-        feeType:
-          student.feeType,
+      feeType: student.feeType,
 
-        installmentNumber,
+      installmentNumber,
 
-        screenshotImage:
-          claimedProof?.imageData ??
-          null,
+      screenshotImage: claimedProof?.imageData ?? null,
 
-        paymentProofId:
-          claimedProof?._id ??
-          null,
+      paymentProofId: claimedProof?._id ?? null,
 
-        feeCycleStartedAt:
-          student.feeCycleStartedAt ??
-          null,
-      });
+      feeCycleStartedAt: student.feeCycleStartedAt ?? null,
+    });
 
-    if (
-      student.feeType ===
-      'monthly'
-    ) {
-      const installment =
-        student.monthlyInstallments.find(
-          (item) =>
-            Number(
-              item.installmentNumber,
-            ) ===
-            installmentNumber,
-        );
+    if (student.feeType === 'monthly') {
+      const installment = student.monthlyInstallments.find(
+        (item) => Number(item.installmentNumber) === installmentNumber,
+      );
 
       if (!installment) {
         /*
          * Payment record exists, so fail loudly instead of
          * silently corrupting installment state.
          */
-        throw new BadRequestException(
-          'Monthly installment record not found',
-        );
+        throw new BadRequestException('Monthly installment record not found');
       }
 
-      installment.status =
-        'paid';
+      installment.status = 'paid';
 
-      installment.paidAt =
-        payment.paymentDate;
+      installment.paidAt = payment.paymentDate;
 
-      installment.paymentId =
-        payment._id;
+      installment.paymentId = payment._id;
 
-      this.recalculateMonthlyStudent(
-        student,
-      );
-    } else {
-      const newPaidAmount =
-        this.roundMoney(
-          Math.min(
-            totalFee,
-            Number(
-              student.paidAmount ||
-                0,
-            ) +
-              paymentAmount,
-          ),
-        );
+      this.recalculateMonthlyStudent(student);
 
-      const newPendingAmount =
-        this.roundMoney(
-          Math.max(
-            0,
-            totalFee -
-              newPaidAmount,
-          ),
-        );
+      student.paymentMethod = data.paymentMethod;
 
-      student.paidAmount =
-        newPaidAmount;
+      if (student.paymentStatus === 'paid') {
+        student.lastFeeReminderSentAt = undefined;
+      }
 
-      student.pendingAmount =
-        newPendingAmount;
-
-      student.paymentStatus =
-        newPendingAmount <= 0
-          ? 'paid'
-          : 'partial';
+      await student.save();
     }
-
-    student.paymentMethod =
-      data.paymentMethod;
-
-    if (
-      student.paymentStatus ===
-      'paid'
-    ) {
-      student.lastFeeReminderSentAt =
-        undefined;
-    }
-
-    await student.save();
+    // Non-monthly (partial/yearly) balance, status, and payment method were
+    // already applied atomically above — before the Payment record was even
+    // created — so there is nothing left to persist here. Deliberately NOT
+    // calling student.save() again: re-saving this in-memory document now
+    // would blindly overwrite paidAmount/pendingAmount with whatever this
+    // request last read, undoing the atomic guard above if another payment
+    // had landed on this student in between.
 
     if (claimedProof) {
       // Payment already succeeded above — this is best-effort bookkeeping,
@@ -2074,6 +1598,21 @@ export class PaymentsService {
           },
         },
       );
+    }
+
+    if (actingUser) {
+      void this.auditLogService.record({
+        action: 'payment.collect',
+        targetId: student._id.toString(),
+        performedBy: actingUser,
+        amount: paymentAmount,
+        before: beforeState,
+        after: {
+          paidAmount: student.paidAmount,
+          pendingAmount: student.pendingAmount,
+          paymentStatus: student.paymentStatus,
+        },
+      });
     }
 
     const invoice = null;
@@ -2120,28 +1659,20 @@ export class PaymentsService {
           receiptNumber: receiptInvoice.invoiceNumber,
         });
       } catch (error) {
-        console.error(
-          'Background payment receipt processing failed:',
-          error,
-        );
+        console.error('Background payment receipt processing failed:', error);
       }
     })();
 
     const currentMonthlyInstallment =
-      student.feeType ===
-      'monthly'
+      student.feeType === 'monthly'
         ? student.monthlyInstallments.find(
-            (item) =>
-              item.status ===
-              'unpaid',
-          ) ||
-          null
+            (item) => item.status === 'unpaid',
+          ) || null
         : null;
 
     return {
       message:
-        student.paymentStatus ===
-        'paid'
+        student.paymentStatus === 'paid'
           ? invoice
             ? 'Fee payment completed and receipt generated successfully'
             : 'Fee payment completed successfully'
@@ -2154,57 +1685,38 @@ export class PaymentsService {
       invoice,
 
       student: {
-        id:
-          student._id,
+        id: student._id,
 
-        studentName:
-          student.studentName,
+        studentName: student.studentName,
 
-        rollNo:
-          student.rollNo,
+        rollNo: student.rollNo,
 
-        course:
-          student.course,
+        course: student.course,
 
-        batch:
-          student.batch,
+        batch: student.batch,
 
-        feeType:
-          student.feeType,
+        feeType: student.feeType,
 
-        totalFee:
-          student.totalFee,
+        totalFee: student.totalFee,
 
-        paidAmount:
-          student.paidAmount,
+        paidAmount: student.paidAmount,
 
-        pendingAmount:
-          student.pendingAmount,
+        pendingAmount: student.pendingAmount,
 
-        selectedMonths:
-          student.selectedMonths ||
-          null,
+        selectedMonths: student.selectedMonths || null,
 
-        monthlyAmount:
-          student.monthlyAmount,
+        monthlyAmount: student.monthlyAmount,
 
         monthlyInstallments:
-          student.feeType ===
-          'monthly'
-            ? student.monthlyInstallments
-            : [],
+          student.feeType === 'monthly' ? student.monthlyInstallments : [],
 
-        currentInstallment:
-          currentMonthlyInstallment,
+        currentInstallment: currentMonthlyInstallment,
 
-        paidMonths:
-          student.paidMonths,
+        paidMonths: student.paidMonths,
 
-        paymentStatus:
-          student.paymentStatus,
+        paymentStatus: student.paymentStatus,
 
-        paymentMethod:
-          student.paymentMethod,
+        paymentMethod: student.paymentMethod,
       },
     };
   }
@@ -2215,131 +1727,89 @@ export class PaymentsService {
    * ==================================================
    */
 
-  async createPayment(
-    data: {
-      studentId: string;
+  async createPayment(data: {
+    studentId: string;
 
-      studentName: string;
+    studentName: string;
 
-      phone: string;
+    phone: string;
 
-      course: string;
+    course: string;
 
-      amount: number;
+    amount: number;
 
-      paymentMethod:
-        | 'cash'
-        | 'bank'
-        | 'upi'
-        | 'qr';
+    paymentMethod: 'cash' | 'bank' | 'upi' | 'qr';
 
-      feeType?:
-        | 'monthly'
-        | 'partial'
-        | 'yearly';
+    feeType?: 'monthly' | 'partial' | 'yearly';
 
-      installmentNumber?:
-        number;
+    installmentNumber?: number;
 
-      screenshotImage?: string | null;
+    screenshotImage?: string | null;
 
-      paymentProofId?: Types.ObjectId | null;
+    paymentProofId?: Types.ObjectId | null;
 
-      feeCycleStartedAt?: Date | null;
-    },
-  ) {
-    const setting =
-      await this.paymentSettingModel
-        .findOne({
-          isActive: true,
-        })
-        .sort({
-          updatedAt: -1,
-        });
-
-    const billingDate =
-      setting?.feeDueDate
-        ? new Date(
-            setting.feeDueDate,
-          )
-        : new Date();
-
-    const billingMonth =
-      this.getBillingMonth(
-        billingDate,
-      );
-
-    const payment =
-      new this.paymentModel({
-        studentId:
-          data.studentId,
-
-        studentName:
-          data.studentName,
-
-        phone:
-          data.phone,
-
-        course:
-          data.course,
-
-        amount:
-          this.roundMoney(
-            data.amount,
-          ),
-
-        billingMonth,
-
-        paymentMethod:
-          data.paymentMethod,
-
-        feeType:
-          data.feeType,
-
-        installmentNumber:
-          data.installmentNumber,
-
-        paymentStatus:
-          'paid',
-
-        paymentDate:
-          new Date(),
-
-        screenshotImage:
-          data.screenshotImage ??
-          null,
-
-        paymentProofId:
-          data.paymentProofId ??
-          null,
-
-        feeCycleStartedAt:
-          data.feeCycleStartedAt ??
-          null,
+    feeCycleStartedAt?: Date | null;
+  }) {
+    const setting = await this.paymentSettingModel
+      .findOne({
+        isActive: true,
+      })
+      .sort({
+        updatedAt: -1,
       });
+
+    const billingDate = setting?.feeDueDate
+      ? new Date(setting.feeDueDate)
+      : new Date();
+
+    const billingMonth = this.getBillingMonth(billingDate);
+
+    const payment = new this.paymentModel({
+      studentId: data.studentId,
+
+      studentName: data.studentName,
+
+      phone: data.phone,
+
+      course: data.course,
+
+      amount: this.roundMoney(data.amount),
+
+      billingMonth,
+
+      paymentMethod: data.paymentMethod,
+
+      feeType: data.feeType,
+
+      installmentNumber: data.installmentNumber,
+
+      paymentStatus: 'paid',
+
+      paymentDate: new Date(),
+
+      screenshotImage: data.screenshotImage ?? null,
+
+      paymentProofId: data.paymentProofId ?? null,
+
+      feeCycleStartedAt: data.feeCycleStartedAt ?? null,
+    });
 
     return payment.save();
   }
 
   async clearStudentPaymentHistory(
     studentId: string,
+    actingUser?: AuditActor,
   ) {
-    const student =
-      await this.studentModel.findById(
-        studentId,
-      );
+    const student = await this.studentModel.findById(studentId);
 
     if (!student) {
-      throw new NotFoundException(
-        'Student not found',
-      );
+      throw new NotFoundException('Student not found');
     }
 
-    const result =
-      await this.paymentModel.deleteMany({
-        studentId:
-          student._id,
-      });
+    const result = await this.paymentModel.deleteMany({
+      studentId: student._id,
+    });
 
     /*
      * Clearing history must not alter accounting totals
@@ -2347,43 +1817,41 @@ export class PaymentsService {
      * and payment timestamps are removed from the schedule.
      */
     if (
-      student.feeType ===
-        'monthly' &&
-      Array.isArray(
-        student.monthlyInstallments,
-      )
+      student.feeType === 'monthly' &&
+      Array.isArray(student.monthlyInstallments)
     ) {
-      for (
-        const installment of
-          student.monthlyInstallments
-      ) {
-        installment.paymentId =
-          undefined;
+      for (const installment of student.monthlyInstallments) {
+        installment.paymentId = undefined;
 
-        if (
-          installment.status ===
-          'paid'
-        ) {
-          installment.paidAt =
-            undefined;
+        if (installment.status === 'paid') {
+          installment.paidAt = undefined;
         }
       }
 
       await student.save();
     }
 
+    if (actingUser) {
+      void this.auditLogService.record({
+        action: 'payment.history.clear',
+        targetId: student._id.toString(),
+        performedBy: actingUser,
+        amount: null,
+        before: { deletedRecordCount: Number(result.deletedCount || 0) },
+        after: {
+          paidAmount: student.paidAmount,
+          pendingAmount: student.pendingAmount,
+          paymentStatus: student.paymentStatus,
+        },
+      });
+    }
+
     return {
-      message:
-        'Payment history cleared successfully',
+      message: 'Payment history cleared successfully',
 
-      deletedCount:
-        Number(
-          result.deletedCount ||
-            0,
-        ),
+      deletedCount: Number(result.deletedCount || 0),
 
-      studentId:
-        student._id,
+      studentId: student._id,
     };
   }
 
@@ -2396,9 +1864,11 @@ export class PaymentsService {
    * transaction log — Paid/Pending/Status must be recalculated from the
    * remaining non-deleted records afterward.
    */
-  async deletePaymentHistoryRecord(paymentId: string) {
-    const payment =
-      await this.paymentModel.findById(paymentId);
+  async deletePaymentHistoryRecord(
+    paymentId: string,
+    actingUser?: AuditActor,
+  ) {
+    const payment = await this.paymentModel.findById(paymentId);
 
     if (!payment) {
       throw new NotFoundException('Payment history record not found');
@@ -2410,8 +1880,7 @@ export class PaymentsService {
       );
     }
 
-    const student =
-      await this.studentModel.findById(payment.studentId);
+    const student = await this.studentModel.findById(payment.studentId);
 
     if (!student) {
       throw new NotFoundException('Student not found');
@@ -2422,6 +1891,14 @@ export class PaymentsService {
         'Deleting individual history records is not supported for the monthly fee type',
       );
     }
+
+    const beforeState = {
+      paidAmount: student.paidAmount,
+      pendingAmount: student.pendingAmount,
+      paymentStatus: student.paymentStatus,
+    };
+
+    const deletedPaymentAmount = Number(payment.amount || 0);
 
     payment.deleted = true;
     payment.screenshotImage = null;
@@ -2458,6 +1935,21 @@ export class PaymentsService {
 
     await student.save();
 
+    if (actingUser) {
+      void this.auditLogService.record({
+        action: 'payment.history.delete',
+        targetId: student._id.toString(),
+        performedBy: actingUser,
+        amount: deletedPaymentAmount,
+        before: beforeState,
+        after: {
+          paidAmount: student.paidAmount,
+          pendingAmount: student.pendingAmount,
+          paymentStatus: student.paymentStatus,
+        },
+      });
+    }
+
     return {
       message: 'Payment history record deleted successfully',
 
@@ -2477,143 +1969,118 @@ export class PaymentsService {
    * ==================================================
    */
 
-  async resetStudentFee(
-    studentId: string,
-  ) {
-    const student =
-      await this.studentModel.findById(
-        studentId,
-      );
+  async resetStudentFee(studentId: string, actingUser?: AuditActor) {
+    const student = await this.studentModel.findById(studentId);
 
     if (!student) {
-      throw new NotFoundException(
-        'Student not found',
-      );
+      throw new NotFoundException('Student not found');
     }
 
-    if (
-      !student.feeSetupCompleted
-    ) {
-      throw new BadRequestException(
-        'Student fee setup is not completed',
-      );
+    if (!student.feeSetupCompleted) {
+      throw new BadRequestException('Student fee setup is not completed');
     }
+
+    const beforeState = {
+      totalFee: student.totalFee,
+      paidAmount: student.paidAmount,
+      pendingAmount: student.pendingAmount,
+      paymentStatus: student.paymentStatus,
+    };
 
     await this.paymentModel.deleteMany({
-      studentId:
-        student._id,
+      studentId: student._id,
     });
 
-    await this.invoiceService
-      .deactivateStudentInvoices(
-        student._id.toString(),
-      );
+    await this.invoiceService.deactivateStudentInvoices(student._id.toString());
 
-    student.totalFee =
-      0;
+    student.totalFee = 0;
 
-    student.feeType =
-      undefined;
+    student.feeType = undefined;
 
-    student.feeSetupSource =
-      undefined;
+    student.feeSetupSource = undefined;
 
-    student.feeStartingDate =
-      undefined;
+    student.feeStartingDate = undefined;
 
-    student.feeCycleStartedAt =
-      undefined;
+    student.feeCycleStartedAt = undefined;
 
-    student.feeEndingDate =
-      undefined;
+    student.feeEndingDate = undefined;
 
-    student.feeDueDay =
-      undefined;
+    student.feeDueDay = undefined;
 
-    student.feeDueDate =
-      undefined;
+    student.feeDueDate = undefined;
 
-    student.feeSetupCompleted =
-      false;
+    student.feeSetupCompleted = false;
 
-    student.selectedMonths =
-      undefined;
+    student.selectedMonths = undefined;
 
-    student.monthlyAmount =
-      0;
+    student.monthlyAmount = 0;
 
-    student.monthlyInstallments =
-      [];
+    student.monthlyInstallments = [];
 
-    student.paidMonths =
-      0;
+    student.paidMonths = 0;
 
-    student.paidAmount =
-      0;
+    student.paidAmount = 0;
 
-    student.pendingAmount =
-      0;
+    student.pendingAmount = 0;
 
-    student.paymentStatus =
-      'unpaid';
+    student.paymentStatus = 'unpaid';
 
-    student.paymentMethod =
-      undefined;
+    student.paymentMethod = undefined;
 
-    student.lastFeeReminderSentAt =
-      undefined;
+    student.lastFeeReminderSentAt = undefined;
 
-    student.feeReminderCount =
-      0;
+    student.feeReminderCount = 0;
 
     await student.save();
+
+    if (actingUser) {
+      void this.auditLogService.record({
+        action: 'fee.reset',
+        targetId: student._id.toString(),
+        performedBy: actingUser,
+        amount: null,
+        before: beforeState,
+        after: {
+          totalFee: student.totalFee,
+          paidAmount: student.paidAmount,
+          pendingAmount: student.pendingAmount,
+          paymentStatus: student.paymentStatus,
+        },
+      });
+    }
 
     return {
       message:
         'Fee setup reset successfully. You can setup the student fee again from the beginning.',
 
       student: {
-        id:
-          student._id,
+        id: student._id,
 
-        studentName:
-          student.studentName,
+        studentName: student.studentName,
 
-        totalFee:
-          student.totalFee,
+        totalFee: student.totalFee,
 
-        feeType:
-          null,
+        feeType: null,
 
-        feeDueDay:
-          null,
+        feeDueDay: null,
 
-        feeDueDate:
-          null,
+        feeDueDate: null,
 
-        feeSetupCompleted:
-          student.feeSetupCompleted,
+        feeSetupCompleted: student.feeSetupCompleted,
 
-        selectedMonths:
-          null,
+        selectedMonths: null,
 
-        monthlyAmount:
-          student.monthlyAmount,
+        monthlyAmount: student.monthlyAmount,
 
-        paidMonths:
-          student.paidMonths,
+        paidMonths: student.paidMonths,
 
-        paidAmount:
-          student.paidAmount,
+        paidAmount: student.paidAmount,
 
-        pendingAmount:
-          student.pendingAmount,
+        pendingAmount: student.pendingAmount,
 
-        paymentStatus:
-          student.paymentStatus,
+        paymentStatus: student.paymentStatus,
 
-        paymentMethod:
-          null,
+        paymentMethod: null,
       },
     };
   }

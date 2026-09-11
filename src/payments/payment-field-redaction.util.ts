@@ -156,3 +156,59 @@ export function redactPaymentProofListForUser<
 >(proofs: T[], user: RequestUser | undefined): T[] {
   return proofs.map((proof) => redactPaymentProofForUser(proof, user));
 }
+
+// Dashboard summary financial redaction. The dashboard has no granular
+// permission section of its own (only page access) and financial totals
+// there aren't per-student fields anyway, so it defers to the same global
+// "Fee Details" master switch used everywhere else fee/financial data is
+// shown, instead of inventing a separate dashboard permission. Strips every
+// company-wide money total and every per-student financial field; counts
+// (totalStudents, courseWiseStudents) and non-financial identity fields on
+// studentDetails carry no fee information and are left untouched.
+export interface DashboardSummary {
+  totalStudents: number;
+  thisMonthCollection: number;
+  totalPending: number;
+  courseWiseStudents: Array<{ course: string; count: number }>;
+  studentDetails: Array<{
+    studentId: unknown;
+    studentName: string;
+    rollNo: string;
+    course: string;
+    status: string;
+    pendingAmount: number;
+  }>;
+}
+
+export function redactDashboardSummaryForUser(
+  summary: DashboardSummary,
+  user: RequestUser | undefined,
+): DashboardSummary {
+  if (!user || user.role === 'admin') {
+    return summary;
+  }
+
+  const permissions = normalizeGranularPermissions(
+    user.granularPermissions,
+  ).payments;
+
+  if (hasFeeDetailsAccess(permissions)) {
+    return summary;
+  }
+
+  const redacted: Record<string, unknown> = { ...summary };
+
+  delete redacted.thisMonthCollection;
+  delete redacted.totalPending;
+
+  redacted.studentDetails = summary.studentDetails.map((student) => {
+    const plainStudent: Record<string, unknown> = { ...student };
+
+    delete plainStudent.status;
+    delete plainStudent.pendingAmount;
+
+    return plainStudent;
+  });
+
+  return redacted as unknown as DashboardSummary;
+}

@@ -4,9 +4,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 
 import { Student, StudentDocument } from './students.schema';
+import { Payment, PaymentDocument } from '../payments/payments.schema';
+import {
+  PaymentProof,
+  PaymentProofDocument,
+} from '../payments/payment-proof.schema';
+import { Invoice, InvoiceDocument } from '../invoice/invoice.schema';
 
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
@@ -16,6 +22,15 @@ export class StudentsService {
   constructor(
     @InjectModel(Student.name)
     private readonly studentModel: Model<StudentDocument>,
+
+    @InjectModel(Payment.name)
+    private readonly paymentModel: Model<PaymentDocument>,
+
+    @InjectModel(PaymentProof.name)
+    private readonly paymentProofModel: Model<PaymentProofDocument>,
+
+    @InjectModel(Invoice.name)
+    private readonly invoiceModel: Model<InvoiceDocument>,
   ) {}
 
   private normalizeParentName(parentName: string) {
@@ -333,9 +348,53 @@ export class StudentsService {
   }
 
   async remove(id: string) {
-    const student = await this.studentModel.findByIdAndDelete(id);
+    const student = await this.studentModel.findById(id);
 
     if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
+    // Payment, PaymentProof and Invoice are the only collections that
+    // reference a student by studentId (monthlyInstallments/fee-cycle data
+    // live embedded on the Student document itself and are removed with
+    // it, so they can never be orphaned). Checked with .exists() — an
+    // indexed existence check, not a full fetch — and evaluated BEFORE any
+    // delete is attempted, so a blocked deletion never touches the
+    // database and can never leave a partially-deleted state.
+    //
+    // studentId is cast to ObjectId explicitly rather than left as the raw
+    // route-param string: these three schemas declare studentId's type as
+    // `Types.ObjectId` (the driver's id class), which Mongoose's SchemaType
+    // resolution does not treat as equivalent to `Schema.Types.ObjectId` —
+    // the path ends up typed Mixed, so Mongoose does not auto-cast a plain
+    // string query value the way it would for a properly-typed ObjectId
+    // path, and a string filter would silently match nothing.
+    const studentObjectId = new Types.ObjectId(id);
+
+    const [hasPayment, hasPaymentProof, hasInvoice] = await Promise.all([
+      this.paymentModel.exists({ studentId: studentObjectId }),
+      this.paymentProofModel.exists({ studentId: studentObjectId }),
+      this.invoiceModel.exists({ studentId: studentObjectId }),
+    ]);
+
+    if (hasPayment || hasPaymentProof || hasInvoice) {
+      throw new ConflictException(
+        'This student cannot be deleted because payment, payment-proof, or invoice records are linked to them. Financial records must be preserved.',
+      );
+    }
+
+    // NOTE: without a multi-document transaction, a financial record
+    // created for this student in the brief window between the checks
+    // above and this delete would not be caught — MongoDB has no
+    // foreign-key constraint to fall back on. This is the same
+    // check-then-act limitation any non-transactional guard has; it does
+    // not risk a partially-deleted state, since the delete below only ever
+    // touches the Student document itself.
+    const deletedStudent = await this.studentModel.findOneAndDelete({
+      _id: id,
+    });
+
+    if (!deletedStudent) {
       throw new NotFoundException('Student not found');
     }
 

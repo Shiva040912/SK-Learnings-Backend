@@ -1,15 +1,7 @@
-
-
-
-import {
-  Prop,
-  Schema,
-  SchemaFactory,
-} from '@nestjs/mongoose';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
 
-export type SettingsDocument =
-  HydratedDocument<Settings>;
+export type SettingsDocument = HydratedDocument<Settings>;
 
 @Schema({
   timestamps: true,
@@ -181,5 +173,4 @@ export class Settings {
   invoiceTerms!: string;
 }
 
-export const SettingsSchema =
-  SchemaFactory.createForClass(Settings);
+export const SettingsSchema = SchemaFactory.createForClass(Settings);

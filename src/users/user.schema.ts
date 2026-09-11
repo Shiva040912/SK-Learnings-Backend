@@ -408,7 +408,8 @@ export class InvoiceActions {
   clearInvoices!: boolean;
 }
 
-export const InvoiceActionsSchema = SchemaFactory.createForClass(InvoiceActions);
+export const InvoiceActionsSchema =
+  SchemaFactory.createForClass(InvoiceActions);
 
 // One flag per actual invoice/student data field — controls that field
 // everywhere it is displayed (receipt-board row and opened invoice document

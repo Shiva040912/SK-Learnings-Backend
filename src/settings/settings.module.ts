@@ -1,47 +1,28 @@
-import {
-  Module,
-} from '@nestjs/common';
+import { Module } from '@nestjs/common';
 
-import {
-  MongooseModule,
-} from '@nestjs/mongoose';
+import { MongooseModule } from '@nestjs/mongoose';
 
-import {
-  Settings,
-  SettingsSchema,
-} from './settings.schema';
+import { Settings, SettingsSchema } from './settings.schema';
 
-import {
-  SettingsController,
-} from './settings.controller';
+import { SettingsController } from './settings.controller';
 
-import {
-  SettingsService,
-} from './settings.service';
+import { SettingsService } from './settings.service';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       {
-        name:
-          Settings.name,
+        name: Settings.name,
 
-        schema:
-          SettingsSchema,
+        schema: SettingsSchema,
       },
     ]),
   ],
 
-  controllers: [
-    SettingsController,
-  ],
+  controllers: [SettingsController],
 
-  providers: [
-    SettingsService,
-  ],
+  providers: [SettingsService],
 
-  exports: [
-    SettingsService,
-  ],
+  exports: [SettingsService],
 })
 export class SettingsModule {}

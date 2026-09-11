@@ -7,26 +7,15 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 
-import {
-  Student,
-  StudentDocument,
-} from '../student/students.schema';
+import { Student, StudentDocument } from '../student/students.schema';
 
-import {
-  Payment,
-  PaymentDocument,
-} from '../payments/payments.schema';
+import { Payment, PaymentDocument } from '../payments/payments.schema';
 
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 
 import { SettingsService } from '../settings/settings.service';
 
-type AlertType =
-  | 'due_soon'
-  | 'due_today'
-  | 'overdue'
-  | 'paid'
-  | 'active';
+type AlertType = 'due_soon' | 'due_today' | 'overdue' | 'paid' | 'active';
 
 type NotificationItem = {
   studentId: string;
@@ -37,17 +26,9 @@ type NotificationItem = {
 
   course: string;
 
-  batch:
-    | string
-    | null;
+  batch: string | null;
 
-  phone: string;
-
-  feeType:
-    | 'monthly'
-    | 'partial'
-    | 'yearly'
-    | null;
+  feeType: 'monthly' | 'partial' | 'yearly' | null;
 
   totalFee: number;
 
@@ -55,49 +36,29 @@ type NotificationItem = {
 
   pendingAmount: number;
 
-  paymentStatus:
-    | 'unpaid'
-    | 'partial'
-    | 'paid';
+  paymentStatus: 'unpaid' | 'partial' | 'paid';
 
-  feeEndingDate:
-    | Date
-    | null;
+  feeEndingDate: Date | null;
 
-  alertType:
-    AlertType;
+  alertType: AlertType;
 
-  daysValue:
-    number;
+  daysValue: number;
 
-  reminderCount:
-    number;
+  reminderCount: number;
 
-  lastReminderSentAt:
-    | Date
-    | null;
+  lastReminderSentAt: Date | null;
 
-  nextReminderDate:
-    | Date
-    | null;
+  nextReminderDate: Date | null;
 
-  paidAfterReminder:
-    boolean;
+  paidAfterReminder: boolean;
 
-  latestPayment:
-    | {
-        amount:
-          number;
+  latestPayment: {
+    amount: number;
 
-        paymentMethod:
-          | string
-          | null;
+    paymentMethod: string | null;
 
-        paymentDate:
-          | Date
-          | null;
-      }
-    | null;
+    paymentDate: Date | null;
+  } | null;
 
   notificationPreferences: {
     muteAll: boolean;
@@ -109,146 +70,81 @@ type NotificationItem = {
 export class NotificationsService {
   constructor(
     @InjectModel(Student.name)
-    private readonly studentModel:
-      Model<StudentDocument>,
+    private readonly studentModel: Model<StudentDocument>,
 
     @InjectModel(Payment.name)
-    private readonly paymentModel:
-      Model<PaymentDocument>,
+    private readonly paymentModel: Model<PaymentDocument>,
 
-    private readonly whatsappService:
-      WhatsappService,
+    private readonly whatsappService: WhatsappService,
 
-    private readonly settingsService:
-      SettingsService,
+    private readonly settingsService: SettingsService,
   ) {}
 
-  private startOfDay(
-    value: Date,
-  ) {
-    const date =
-      new Date(
-        value,
-      );
+  private startOfDay(value: Date) {
+    const date = new Date(value);
 
-    date.setHours(
-      0,
-      0,
-      0,
-      0,
-    );
+    date.setHours(0, 0, 0, 0);
 
     return date;
   }
 
-  private getDaysDifference(
-    first: Date,
-    second: Date,
-  ) {
-    const firstDate =
-      this.startOfDay(
-        first,
-      );
+  private getDaysDifference(first: Date, second: Date) {
+    const firstDate = this.startOfDay(first);
 
-    const secondDate =
-      this.startOfDay(
-        second,
-      );
+    const secondDate = this.startOfDay(second);
 
     return Math.round(
-      (
-        secondDate.getTime() -
-        firstDate.getTime()
-      ) /
-        (
-          1000 *
-          60 *
-          60 *
-          24
-        ),
+      (secondDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24),
     );
   }
 
   private getNextReminderDate(
-    lastSentAt:
-      | Date
-      | null
-      | undefined,
+    lastSentAt: Date | null | undefined,
 
-    intervalDays:
-      number,
+    intervalDays: number,
   ) {
-    if (
-      !lastSentAt
-    ) {
+    if (!lastSentAt) {
       return null;
     }
 
-    const nextDate =
-      new Date(
-        lastSentAt,
-      );
+    const nextDate = new Date(lastSentAt);
 
-    nextDate.setDate(
-      nextDate.getDate() +
-        intervalDays,
-    );
+    nextDate.setDate(nextDate.getDate() + intervalDays);
 
     return nextDate;
   }
 
-  private async sendReminderToStudent(
-    student:
-      StudentDocument,
-  ) {
-    if (student.muteAllFeeNotifications || student.muteFeeReminderNotification) {
+  private async sendReminderToStudent(student: StudentDocument) {
+    if (
+      student.muteAllFeeNotifications ||
+      student.muteFeeReminderNotification
+    ) {
       throw new BadRequestException(
         'Fee reminder messages are disabled for this student',
       );
     }
 
-    if (
-      !student.feeDueDate
-    ) {
-      throw new BadRequestException(
-        'Student fee due date is not configured',
-      );
+    if (!student.feeDueDate) {
+      throw new BadRequestException('Student fee due date is not configured');
     }
 
-    const whatsappResult =
-      await this.whatsappService.sendFeePaymentReminder(
-        {
-          phone:
-            student.phone,
+    const whatsappResult = await this.whatsappService.sendFeePaymentReminder({
+      phone: student.phone,
 
-          parentName:
-            student.parentName,
+      parentName: student.parentName,
 
-          studentName:
-            student.studentName,
+      studentName: student.studentName,
 
-          studentId:
-            student._id.toString(),
+      studentId: student._id.toString(),
 
-          pendingAmount:
-            Number(
-              student.pendingAmount ||
-                0,
-            ),
+      pendingAmount: Number(student.pendingAmount || 0),
 
-          dueDate:
-            student.feeDueDate,
-        },
-      );
+      dueDate: student.feeDueDate,
+    });
 
-    student.lastFeeReminderSentAt =
-      new Date();
+    student.lastFeeReminderSentAt = new Date();
 
-    student.feeReminderCount =
-      Number(
-        student.feeReminderCount ||
-          0,
-      ) + 1;
+    student.feeReminderCount = Number(student.feeReminderCount || 0) + 1;
 
     await student.save();
 
@@ -256,213 +152,123 @@ export class NotificationsService {
   }
 
   async getNotifications() {
-    const settings =
-      await this.settingsService.getNotificationSettings();
+    const settings = await this.settingsService.getNotificationSettings();
 
-    const reminderDaysBeforeDue =
-      Number(
-        settings.reminderDaysBeforeDue ||
-          0,
-      );
+    const reminderDaysBeforeDue = Number(settings.reminderDaysBeforeDue || 0);
 
-    const reminderIntervalDays =
-      Number(
-        settings.overdueReminderIntervalDays ||
-          3,
-      );
+    const reminderIntervalDays = Number(
+      settings.overdueReminderIntervalDays || 3,
+    );
 
-    const now =
-      new Date();
+    const now = new Date();
 
-    const students =
-      await this.studentModel
-        .find({
-          feeSetupCompleted:
-            true,
-        })
-        .sort({
-          feeDueDate:
-            1,
-        });
+    const students = await this.studentModel
+      .find({
+        feeSetupCompleted: true,
+      })
+      .sort({
+        feeDueDate: 1,
+      });
 
-    const latestPayments =
-      await this.paymentModel.aggregate<{
-        _id: StudentDocument['_id'];
-        payment: PaymentDocument;
-      }>([
-        {
-          $match: {
-            studentId: {
-              $in: students.map((student) => student._id),
-            },
+    const latestPayments = await this.paymentModel.aggregate<{
+      _id: StudentDocument['_id'];
+      payment: PaymentDocument;
+    }>([
+      {
+        $match: {
+          studentId: {
+            $in: students.map((student) => student._id),
           },
         },
-        {
-          $sort: {
-            studentId: 1,
-            paymentDate: -1,
-            createdAt: -1,
+      },
+      {
+        $sort: {
+          studentId: 1,
+          paymentDate: -1,
+          createdAt: -1,
+        },
+      },
+      {
+        $group: {
+          _id: '$studentId',
+          payment: {
+            $first: '$$ROOT',
           },
         },
-        {
-          $group: {
-            _id: '$studentId',
-            payment: {
-              $first: '$$ROOT',
-            },
-          },
-        },
-      ]);
+      },
+    ]);
 
-    const latestPaymentByStudent =
-      new Map(
-        latestPayments.map((item) => [
-          item._id.toString(),
-          item.payment,
-        ]),
+    const latestPaymentByStudent = new Map(
+      latestPayments.map((item) => [item._id.toString(), item.payment]),
+    );
+    const result: NotificationItem[] = [];
+
+    for (const student of students) {
+      const dueDate = student.feeDueDate ? new Date(student.feeDueDate) : null;
+
+      const reminderCount = Number(student.feeReminderCount || 0);
+
+      const lastReminderSentAt = student.lastFeeReminderSentAt
+        ? new Date(student.lastFeeReminderSentAt)
+        : null;
+
+      const nextReminderDate = this.getNextReminderDate(
+        student.lastFeeReminderSentAt,
+        reminderIntervalDays,
       );
-    const result:
-      NotificationItem[] = [];
 
-    for (
-      const student of students
-    ) {
-      const dueDate =
-        student.feeDueDate
-          ? new Date(
-              student.feeDueDate,
-            )
-          : null;
+      let alertType: AlertType = 'active';
 
-      const reminderCount =
-        Number(
-          student.feeReminderCount ||
-            0,
-        );
+      let daysValue = 0;
 
-      const lastReminderSentAt =
-        student.lastFeeReminderSentAt
-          ? new Date(
-              student.lastFeeReminderSentAt,
-            )
-          : null;
+      if (student.paymentStatus === 'paid') {
+        alertType = 'paid';
+      } else if (dueDate) {
+        const daysDifference = this.getDaysDifference(now, dueDate);
 
-      const nextReminderDate =
-        this.getNextReminderDate(
-          student.lastFeeReminderSentAt,
-          reminderIntervalDays,
-        );
+        daysValue = daysDifference;
 
-      let alertType:
-        AlertType =
-        'active';
-
-      let daysValue =
-        0;
-
-      if (
-        student.paymentStatus ===
-        'paid'
-      ) {
-        alertType =
-          'paid';
-      } else if (
-        dueDate
-      ) {
-        const daysDifference =
-          this.getDaysDifference(
-            now,
-            dueDate,
-          );
-
-        daysValue =
-          daysDifference;
-
-        if (
-          daysDifference <
-          0
-        ) {
-          alertType =
-            'overdue';
-        } else if (
-          daysDifference ===
-          0
-        ) {
-          alertType =
-            'due_today';
-        } else if (
-          daysDifference <=
-          reminderDaysBeforeDue
-        ) {
-          alertType =
-            'due_soon';
+        if (daysDifference < 0) {
+          alertType = 'overdue';
+        } else if (daysDifference === 0) {
+          alertType = 'due_today';
+        } else if (daysDifference <= reminderDaysBeforeDue) {
+          alertType = 'due_soon';
         }
       }
 
-      const latestPayment =
-        latestPaymentByStudent.get(
-          student._id.toString(),
-        );
+      const latestPayment = latestPaymentByStudent.get(student._id.toString());
 
-      const paidAfterReminder =
-        Boolean(
-          student.paymentStatus ===
-            'paid' &&
-            lastReminderSentAt &&
-            latestPayment?.paymentDate &&
-            new Date(
-              latestPayment.paymentDate,
-            ).getTime() >
-              lastReminderSentAt.getTime(),
-        );
+      const paidAfterReminder = Boolean(
+        student.paymentStatus === 'paid' &&
+        lastReminderSentAt &&
+        latestPayment?.paymentDate &&
+        new Date(latestPayment.paymentDate).getTime() >
+          lastReminderSentAt.getTime(),
+      );
 
       result.push({
-        studentId:
-          student._id.toString(),
+        studentId: student._id.toString(),
 
-        studentName:
-          student.studentName,
+        studentName: student.studentName,
 
-        rollNo:
-          student.rollNo,
+        rollNo: student.rollNo,
 
-        course:
-          student.course,
+        course: student.course,
 
-        batch:
-          student.batch ||
-          null,
+        batch: student.batch || null,
 
-        phone:
-          student.phone,
+        feeType: student.feeType || null,
 
-        feeType:
-          student.feeType ||
-          null,
+        totalFee: Number(student.totalFee || 0),
 
-        totalFee:
-          Number(
-            student.totalFee ||
-              0,
-          ),
+        paidAmount: Number(student.paidAmount || 0),
 
-        paidAmount:
-          Number(
-            student.paidAmount ||
-              0,
-          ),
+        pendingAmount: Number(student.pendingAmount || 0),
 
-        pendingAmount:
-          Number(
-            student.pendingAmount ||
-              0,
-          ),
+        paymentStatus: student.paymentStatus,
 
-        paymentStatus:
-          student.paymentStatus,
-
-        feeEndingDate:
-          dueDate,
+        feeEndingDate: dueDate,
 
         alertType,
 
@@ -476,27 +282,17 @@ export class NotificationsService {
 
         paidAfterReminder,
 
-        latestPayment:
-          latestPayment
-            ? {
-                amount:
-                  Number(
-                    latestPayment.amount ||
-                      0,
-                  ),
+        latestPayment: latestPayment
+          ? {
+              amount: Number(latestPayment.amount || 0),
 
-                paymentMethod:
-                  latestPayment.paymentMethod ||
-                  null,
+              paymentMethod: latestPayment.paymentMethod || null,
 
-                paymentDate:
-                  latestPayment.paymentDate
-                    ? new Date(
-                        latestPayment.paymentDate,
-                      )
-                    : null,
-              }
-            : null,
+              paymentDate: latestPayment.paymentDate
+                ? new Date(latestPayment.paymentDate)
+                : null,
+            }
+          : null,
 
         notificationPreferences: {
           muteAll: Boolean(student.muteAllFeeNotifications),
@@ -507,204 +303,121 @@ export class NotificationsService {
 
     return {
       summary: {
-        total:
-          result.length,
+        total: result.length,
 
-        dueSoon:
-          result.filter(
-            (item) =>
-              item.alertType ===
-              'due_soon',
-          ).length,
+        dueSoon: result.filter((item) => item.alertType === 'due_soon').length,
 
-        dueToday:
-          result.filter(
-            (item) =>
-              item.alertType ===
-              'due_today',
-          ).length,
+        dueToday: result.filter((item) => item.alertType === 'due_today')
+          .length,
 
-        overdue:
-          result.filter(
-            (item) =>
-              item.alertType ===
-              'overdue',
-          ).length,
+        overdue: result.filter((item) => item.alertType === 'overdue').length,
 
-        reminderSent:
-          result.filter(
-            (item) =>
-              item.reminderCount >
-              0,
-          ).length,
+        reminderSent: result.filter((item) => item.reminderCount > 0).length,
 
-        paidAfterReminder:
-          result.filter(
-            (item) =>
-              item.paidAfterReminder,
-          ).length,
+        paidAfterReminder: result.filter((item) => item.paidAfterReminder)
+          .length,
 
-        unpaid:
-          result.filter(
-            (item) =>
-              item.paymentStatus !==
-                'paid' &&
-              item.pendingAmount >
-                0,
-          ).length,
+        unpaid: result.filter(
+          (item) => item.paymentStatus !== 'paid' && item.pendingAmount > 0,
+        ).length,
       },
 
       reminderIntervalDays,
 
-      notifications:
-        result,
+      notifications: result,
     };
   }
 
-  async sendManualReminder(
-    studentId:
-      string,
-  ) {
-    const student =
-      await this.studentModel.findById(
-        studentId,
-      );
+  async sendManualReminder(studentId: string) {
+    const student = await this.studentModel.findById(studentId);
 
-    if (
-      !student
-    ) {
-      throw new NotFoundException(
-        'Student not found',
-      );
+    if (!student) {
+      throw new NotFoundException('Student not found');
+    }
+
+    if (!student.feeSetupCompleted) {
+      throw new BadRequestException('Student fee setup is not completed');
     }
 
     if (
-      !student.feeSetupCompleted
+      student.paymentStatus === 'paid' ||
+      Number(student.pendingAmount || 0) <= 0
     ) {
-      throw new BadRequestException(
-        'Student fee setup is not completed',
-      );
+      throw new BadRequestException('Student fee is already fully paid');
     }
 
-    if (
-      student.paymentStatus ===
-        'paid' ||
-      Number(
-        student.pendingAmount ||
-          0,
-      ) <=
-        0
-    ) {
-      throw new BadRequestException(
-        'Student fee is already fully paid',
-      );
-    }
+    const settings = await this.settingsService.getNotificationSettings();
 
-    const settings =
-      await this.settingsService.getNotificationSettings();
-
-    if (
-      !settings.whatsappEnabled
-    ) {
+    if (!settings.whatsappEnabled) {
       throw new BadRequestException(
         'WhatsApp reminders are disabled in settings',
       );
     }
 
-    const whatsappResult =
-      await this.sendReminderToStudent(
-        student,
-      );
+    const whatsappResult = await this.sendReminderToStudent(student);
 
     return {
-      message:
-        'Fee reminder sent successfully',
+      message: 'Fee reminder sent successfully',
 
-      reminderCount:
-        student.feeReminderCount,
+      reminderCount: student.feeReminderCount,
 
-      lastReminderSentAt:
-        student.lastFeeReminderSentAt,
+      lastReminderSentAt: student.lastFeeReminderSentAt,
 
-      whatsapp:
-        whatsappResult,
+      whatsapp: whatsappResult,
     };
   }
 
   async sendAllUnpaidReminders() {
-    const settings =
-      await this.settingsService.getNotificationSettings();
+    const settings = await this.settingsService.getNotificationSettings();
 
-    if (
-      !settings.whatsappEnabled
-    ) {
+    if (!settings.whatsappEnabled) {
       throw new BadRequestException(
         'WhatsApp reminders are disabled in settings',
       );
     }
 
-    const students =
-      await this.studentModel.find({
-        feeSetupCompleted:
-          true,
+    const students = await this.studentModel.find({
+      feeSetupCompleted: true,
 
-        paymentStatus: {
-          $in: [
-            'unpaid',
-            'partial',
-          ],
-        },
+      paymentStatus: {
+        $in: ['unpaid', 'partial'],
+      },
 
-        pendingAmount: {
-          $gt:
-            0,
-        },
+      pendingAmount: {
+        $gt: 0,
+      },
 
-        isActive:
-          true,
+      isActive: true,
 
-        muteAllFeeNotifications: { $ne: true },
+      muteAllFeeNotifications: { $ne: true },
 
-        muteFeeReminderNotification: { $ne: true },
-      });
+      muteFeeReminderNotification: { $ne: true },
+    });
 
-    if (
-      students.length ===
-      0
-    ) {
+    if (students.length === 0) {
       return {
-        message:
-          'No unpaid students found',
+        message: 'No unpaid students found',
 
-        total:
-          0,
+        total: 0,
 
-        sent:
-          0,
+        sent: 0,
 
-        failed:
-          0,
+        failed: 0,
 
-        failedStudents:
-          [],
+        failedStudents: [],
       };
     }
 
-    let sent =
-      0;
+    let sent = 0;
 
-    let failed =
-      0;
+    let failed = 0;
 
     const failedStudents: {
-      studentId:
-        string;
+      studentId: string;
 
-      studentName:
-        string;
+      studentName: string;
 
-      reason:
-        string;
+      reason: string;
     }[] = [];
 
     const concurrency = 4;
@@ -738,18 +451,13 @@ export class NotificationsService {
 
     return {
       message:
-        failed ===
-        0
+        failed === 0
           ? `Reminder sent successfully to ${sent} unpaid student${
-              sent ===
-              1
-                ? ''
-                : 's'
+              sent === 1 ? '' : 's'
             }`
           : `Reminder process completed. ${sent} sent, ${failed} failed.`,
 
-      total:
-        students.length,
+      total: students.length,
 
       sent,
 
@@ -769,13 +477,16 @@ export class NotificationsService {
       uniqueStudentIds.map((studentId) => this.sendManualReminder(studentId)),
     );
 
-    const sent = results.filter((result) => result.status === 'fulfilled').length;
+    const sent = results.filter(
+      (result) => result.status === 'fulfilled',
+    ).length;
     const failed = results.length - sent;
 
     return {
-      message: failed === 0
-        ? `Reminder sent successfully to ${sent} selected student${sent === 1 ? '' : 's'}`
-        : `Reminder process completed. ${sent} sent, ${failed} failed.`,
+      message:
+        failed === 0
+          ? `Reminder sent successfully to ${sent} selected student${sent === 1 ? '' : 's'}`
+          : `Reminder process completed. ${sent} sent, ${failed} failed.`,
       total: uniqueStudentIds.length,
       sent,
       failed,
@@ -794,13 +505,17 @@ export class NotificationsService {
 
     for (const key of allowedKeys) {
       if (key in preferences && typeof preferences[key] !== 'boolean') {
-        throw new BadRequestException('Notification preference must be a boolean');
+        throw new BadRequestException(
+          'Notification preference must be a boolean',
+        );
       }
     }
 
     const update: Record<string, boolean> = {};
-    if ('muteAll' in preferences) update.muteAllFeeNotifications = preferences.muteAll as boolean;
-    if ('muteReminder' in preferences) update.muteFeeReminderNotification = preferences.muteReminder as boolean;
+    if ('muteAll' in preferences)
+      update.muteAllFeeNotifications = preferences.muteAll as boolean;
+    if ('muteReminder' in preferences)
+      update.muteFeeReminderNotification = preferences.muteReminder as boolean;
 
     const student = await this.studentModel.findByIdAndUpdate(
       studentId,

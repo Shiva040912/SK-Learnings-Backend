@@ -1,14 +1,8 @@
-import {
-  BadRequestException,
-  Injectable,
-} from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 
-import {
-  Settings,
-  SettingsDocument,
-} from './settings.schema';
+import { Settings, SettingsDocument } from './settings.schema';
 
 import { UpdateSettingsDto } from './dto/update-setting.dto';
 
@@ -16,17 +10,14 @@ import { UpdateSettingsDto } from './dto/update-setting.dto';
 export class SettingsService {
   constructor(
     @InjectModel(Settings.name)
-    private readonly settingsModel:
-      Model<SettingsDocument>,
+    private readonly settingsModel: Model<SettingsDocument>,
   ) {}
 
   private async getOrCreateSettings() {
-    let settings =
-      await this.settingsModel.findOne();
+    let settings = await this.settingsModel.findOne();
 
     if (!settings) {
-      settings =
-        new this.settingsModel({});
+      settings = new this.settingsModel({});
 
       await settings.save();
     }
@@ -38,23 +29,13 @@ export class SettingsService {
     return this.getOrCreateSettings();
   }
 
-  async updateSettings(
-    updateSettingsDto:
-      UpdateSettingsDto,
-  ) {
-    const settings =
-      await this.getOrCreateSettings();
+  async updateSettings(updateSettingsDto: UpdateSettingsDto) {
+    const settings = await this.getOrCreateSettings();
 
     const defaultMonths =
-      updateSettingsDto.defaultMonths ??
-      settings.defaultMonths;
+      updateSettingsDto.defaultMonths ?? settings.defaultMonths;
 
-    if (
-      !Number.isInteger(
-        Number(defaultMonths),
-      ) ||
-      Number(defaultMonths) < 1
-    ) {
+    if (!Number.isInteger(Number(defaultMonths)) || Number(defaultMonths) < 1) {
       throw new BadRequestException(
         'Default months must be a positive whole number',
       );
@@ -66,22 +47,12 @@ export class SettingsService {
       1;
 
     const recurringFeeDueDay =
-      updateSettingsDto.recurringFeeDueDay ??
-      settings.recurringFeeDueDay ??
-      10;
+      updateSettingsDto.recurringFeeDueDay ?? settings.recurringFeeDueDay ?? 10;
 
     if (
-      !Number.isInteger(
-        Number(
-          recurringFeeStartDay,
-        ),
-      ) ||
-      Number(
-        recurringFeeStartDay,
-      ) < 1 ||
-      Number(
-        recurringFeeStartDay,
-      ) > 31
+      !Number.isInteger(Number(recurringFeeStartDay)) ||
+      Number(recurringFeeStartDay) < 1 ||
+      Number(recurringFeeStartDay) > 31
     ) {
       throw new BadRequestException(
         'Recurring fee start day must be between 1 and 31',
@@ -89,148 +60,100 @@ export class SettingsService {
     }
 
     if (
-      !Number.isInteger(
-        Number(
-          recurringFeeDueDay,
-        ),
-      ) ||
-      Number(
-        recurringFeeDueDay,
-      ) < 1 ||
-      Number(
-        recurringFeeDueDay,
-      ) > 31
+      !Number.isInteger(Number(recurringFeeDueDay)) ||
+      Number(recurringFeeDueDay) < 1 ||
+      Number(recurringFeeDueDay) > 31
     ) {
       throw new BadRequestException(
         'Recurring fee due day must be between 1 and 31',
       );
     }
 
-    const cleanData =
-      Object.fromEntries(
-        Object.entries(
-          updateSettingsDto,
-        ).filter(
-          ([, value]) =>
-            value !== undefined,
-        ),
-      );
-
-    Object.assign(
-      settings,
-      cleanData,
+    const cleanData = Object.fromEntries(
+      Object.entries(updateSettingsDto).filter(
+        ([, value]) => value !== undefined,
+      ),
     );
+
+    Object.assign(settings, cleanData);
 
     await settings.save();
 
     return {
-      message:
-        'Settings updated successfully',
+      message: 'Settings updated successfully',
       settings,
     };
   }
 
   async getFeeSettings() {
-    const settings =
-      await this.getOrCreateSettings();
+    const settings = await this.getOrCreateSettings();
 
     return {
-      monthlyFeeEnabled:
-        settings.monthlyFeeEnabled,
+      monthlyFeeEnabled: settings.monthlyFeeEnabled,
 
-      defaultMonths:
-        settings.defaultMonths,
+      defaultMonths: settings.defaultMonths,
 
       /*
        * Legacy fields are returned so older frontend builds
        * do not break, but they are not hard limits anymore.
        */
-      minimumMonths:
-        settings.minimumMonths,
+      minimumMonths: settings.minimumMonths,
 
-      maximumMonths:
-        settings.maximumMonths,
+      maximumMonths: settings.maximumMonths,
 
-      partialFeeEnabled:
-        settings.partialFeeEnabled,
+      partialFeeEnabled: settings.partialFeeEnabled,
 
-      minimumPartialAmount:
-        settings.minimumPartialAmount,
+      minimumPartialAmount: settings.minimumPartialAmount,
 
-      yearlyFeeEnabled:
-        settings.yearlyFeeEnabled,
+      yearlyFeeEnabled: settings.yearlyFeeEnabled,
 
-      commonFeeSetupEnabled:
-        settings.commonFeeSetupEnabled ??
-        true,
+      commonFeeSetupEnabled: settings.commonFeeSetupEnabled ?? true,
 
-      courseWiseFeeSetupEnabled:
-        settings.courseWiseFeeSetupEnabled ??
-        true,
+      courseWiseFeeSetupEnabled: settings.courseWiseFeeSetupEnabled ?? true,
 
-      recurringFeeStartDay:
-        settings.recurringFeeStartDay ??
-        1,
+      recurringFeeStartDay: settings.recurringFeeStartDay ?? 1,
 
-      recurringFeeDueDay:
-        settings.recurringFeeDueDay ??
-        10,
+      recurringFeeDueDay: settings.recurringFeeDueDay ?? 10,
     };
   }
 
   async getNotificationSettings() {
-    const settings =
-      await this.getOrCreateSettings();
+    const settings = await this.getOrCreateSettings();
 
     return {
-      whatsappEnabled:
-        settings.whatsappEnabled,
+      whatsappEnabled: settings.whatsappEnabled,
 
-      reminderDaysBeforeDue:
-        settings.reminderDaysBeforeDue,
+      reminderDaysBeforeDue: settings.reminderDaysBeforeDue,
 
-      reminderOnDueDate:
-        settings.reminderOnDueDate,
+      reminderOnDueDate: settings.reminderOnDueDate,
 
-      overdueReminderEnabled:
-        settings.overdueReminderEnabled,
+      overdueReminderEnabled: settings.overdueReminderEnabled,
 
-      overdueReminderIntervalDays:
-        settings.overdueReminderIntervalDays,
+      overdueReminderIntervalDays: settings.overdueReminderIntervalDays,
     };
   }
 
   async getInvoiceSettings() {
-    const settings =
-      await this.getOrCreateSettings();
+    const settings = await this.getOrCreateSettings();
 
     return {
-      invoiceEnabled:
-        settings.invoiceEnabled,
+      invoiceEnabled: settings.invoiceEnabled,
 
-      invoicePrefix:
-        settings.invoicePrefix,
+      invoicePrefix: settings.invoicePrefix,
 
-      invoiceSuffix:
-        settings.invoiceSuffix,
+      invoiceSuffix: settings.invoiceSuffix,
 
-      invoiceQrCode:
-        settings.invoiceQrCode,
+      invoiceQrCode: settings.invoiceQrCode,
 
-      gstNumber:
-        settings.gstNumber,
+      gstNumber: settings.gstNumber,
 
-      ownerName:
-        settings.ownerName,
+      ownerName: settings.ownerName,
 
-      invoiceAddress:
-        settings.invoiceAddress,
+      invoiceAddress: settings.invoiceAddress,
 
-      invoiceFooter:
-        settings.invoiceFooter,
+      invoiceFooter: settings.invoiceFooter,
 
-      invoiceTerms:
-        settings.invoiceTerms,
+      invoiceTerms: settings.invoiceTerms,
     };
   }
 }

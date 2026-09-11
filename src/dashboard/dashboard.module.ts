@@ -1,15 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 
-import {
-  Student,
-  StudentSchema,
-} from '../student/students.schema';
+import { Student, StudentSchema } from '../student/students.schema';
 
-import {
-  Payment,
-  PaymentSchema,
-} from '../payments/payments.schema';
+import { Payment, PaymentSchema } from '../payments/payments.schema';
 
 import { DashboardController } from './dashboard.controller';
 import { DashboardService } from './dashboard.service';

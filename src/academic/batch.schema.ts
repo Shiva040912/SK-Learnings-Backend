@@ -25,5 +25,4 @@ export class Batch {
   endTime!: string;
 }
 
-export const BatchSchema =
-  SchemaFactory.createForClass(Batch);
+export const BatchSchema = SchemaFactory.createForClass(Batch);

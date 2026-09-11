@@ -2,25 +2,16 @@ import { Module } from '@nestjs/common';
 
 import { MongooseModule } from '@nestjs/mongoose';
 
-import {
-  Payment,
-  PaymentSchema,
-} from './payments.schema';
+import { Payment, PaymentSchema } from './payments.schema';
 
 import {
   PaymentSetting,
   PaymentSettingSchema,
 } from './payments-settings.schema';
 
-import {
-  PaymentProof,
-  PaymentProofSchema,
-} from './payment-proof.schema';
+import { PaymentProof, PaymentProofSchema } from './payment-proof.schema';
 
-import {
-  Student,
-  StudentSchema,
-} from '../student/students.schema';
+import { Student, StudentSchema } from '../student/students.schema';
 
 import { PaymentsController } from './payments.controller';
 
@@ -33,6 +24,8 @@ import { SettingsModule } from '../settings/settings.module';
 import { InvoiceModule } from '../invoice/invoice.module';
 
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+
+import { AuditModule } from '../audit/audit.module';
 
 import { PaymentsPublicController } from './payments-public.controller';
 
@@ -65,20 +58,14 @@ import { PaymentsPublicController } from './payments-public.controller';
     InvoiceModule,
 
     WhatsappModule,
+
+    AuditModule,
   ],
 
-  controllers: [
-    PaymentsController,
-     PaymentsPublicController,
-  ],
+  controllers: [PaymentsController, PaymentsPublicController],
 
-  providers: [
-    PaymentsService,
-    FeeReminderScheduler,
-  ],
+  providers: [PaymentsService, FeeReminderScheduler],
 
-  exports: [
-    PaymentsService,
-  ],
+  exports: [PaymentsService],
 })
 export class PaymentsModule {}

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -36,6 +37,14 @@ import {
 } from '../auth/invoice-permission-keys';
 import { normalizeSettingsActions } from '../auth/settings-permission-keys';
 
+// The identity of whoever is calling a users.service mutation — taken from
+// the authenticated request (req.user), never from the request body. Every
+// privilege-sensitive check below trusts only this, matching the rest of
+// the app's "backend is the source of truth" permission model.
+interface ActingUser {
+  role: string;
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -49,7 +58,14 @@ export class UsersService {
     });
   }
 
-  async createUser(createUserDto: CreateUserDto) {
+  async createUser(createUserDto: CreateUserDto, actingUser?: ActingUser) {
+    // Creating a user account always assigns a role and permission set — an
+    // inherently privileged action — so it stays admin-only, same as
+    // modifying an existing user's role/permissions below.
+    if (actingUser?.role !== 'admin') {
+      throw new ForbiddenException('Only an admin can create user accounts');
+    }
+
     const email = createUserDto.email.toLowerCase().trim();
 
     const existingUser = await this.userModel.findOne({
@@ -117,6 +133,31 @@ export class UsersService {
         user.granularPermissions,
       ),
     }));
+  }
+
+  /*
+   * Live authorization snapshot read fresh from the DB on every
+   * authenticated request (see JwtStrategy.validate) so a role/permission
+   * change or deactivation takes effect immediately on the user's existing
+   * session, instead of only after their JWT naturally expires.
+   */
+  async getAuthSnapshot(id: string) {
+    const user = await this.userModel
+      .findById(id)
+      .select('role isActive pagePermissions granularPermissions')
+      .lean();
+
+    if (!user || !user.isActive) {
+      return null;
+    }
+
+    return {
+      role: user.role,
+      pagePermissions: user.pagePermissions,
+      granularPermissions: normalizeGranularPermissions(
+        user.granularPermissions,
+      ),
+    };
   }
 
   async getUserById(id: string) {
@@ -262,7 +303,29 @@ export class UsersService {
     };
   }
 
-  async updateUser(id: string, updateUserDto: UpdateUserDto) {
+  async updateUser(
+    id: string,
+    updateUserDto: UpdateUserDto,
+    actingUser?: ActingUser,
+  ) {
+    // Role/pagePermissions/granularPermissions are the only fields that can
+    // grant elevated access, so only an admin may include them in an update
+    // — for ANY target user, including the caller's own account. This is
+    // checked before touching the database at all, so a blocked attempt
+    // never partially applies. Non-privileged fields (name/email/phone/
+    // password/etc.) stay editable by anyone with Users page access, same
+    // as before.
+    if (
+      actingUser?.role !== 'admin' &&
+      (updateUserDto.role !== undefined ||
+        updateUserDto.pagePermissions !== undefined ||
+        updateUserDto.granularPermissions !== undefined)
+    ) {
+      throw new ForbiddenException(
+        'Only an admin can modify role or permissions',
+      );
+    }
+
     const user = await this.userModel.findById(id);
 
     if (!user) {
@@ -428,11 +491,18 @@ export class UsersService {
     };
   }
 
-  async deleteUser(id: string) {
+  async deleteUser(id: string, actingUser?: ActingUser) {
     const user = await this.userModel.findById(id);
 
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    // Deleting an admin account is itself a privileged action (it can lock
+    // other admins out) — a non-admin with Users page access may still
+    // delete a non-admin account, but not an admin one.
+    if (actingUser?.role !== 'admin' && user.role === 'admin') {
+      throw new ForbiddenException('Only an admin can delete an admin account');
     }
 
     await this.userModel.deleteOne({
